@@ -52,6 +52,8 @@ export const UploadDialog = ({ open, onOpenChange, userId, onUploadComplete }: U
             body: {
               documentId,
               content: base64,
+              fileName: file.name,
+              fileType: file.type,
             },
           }).catch(console.error);
         };

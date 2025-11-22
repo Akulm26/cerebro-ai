@@ -134,6 +134,9 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
 
       if (error) throw error;
 
+      // Optimistically update local state so sidebar updates immediately
+      setDocuments(prev => prev.filter(doc => doc.id !== docId));
+
       toast({
         title: "Document deleted",
         description: "Document and its chunks have been removed",
@@ -146,7 +149,6 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
       });
     }
   };
-
   const handleRetry = async (docId: string) => {
     try {
       const { error } = await supabase

@@ -19,7 +19,7 @@ interface UploadDialogProps {
 export const UploadDialog = ({ open, onOpenChange, userId, onUploadComplete }: UploadDialogProps) => {
   const [isUploading, setIsUploading] = useState(false);
   const [url, setUrl] = useState("");
-  const [processingDocuments, setProcessingDocuments] = useState<Array<{ id: string; name: string }>>([]);
+  const [processingDocuments, setProcessingDocuments] = useState<Array<{ id: string; name: string; size: number }>>([]);
   const { toast } = useToast();
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -45,7 +45,7 @@ export const UploadDialog = ({ open, onOpenChange, userId, onUploadComplete }: U
         const documentId = data.documentId;
 
         // Add to processing list immediately
-        setProcessingDocuments(prev => [...prev, { id: documentId, name: file.name }]);
+        setProcessingDocuments(prev => [...prev, { id: documentId, name: file.name, size: file.size }]);
 
         // Process file content asynchronously without blocking
         const fileReader = new FileReader();
@@ -144,6 +144,7 @@ export const UploadDialog = ({ open, onOpenChange, userId, onUploadComplete }: U
                 key={doc.id}
                 documentId={doc.id}
                 fileName={doc.name}
+                fileSize={doc.size}
                 onComplete={() => handleProcessingComplete(doc.id)}
               />
             ))}

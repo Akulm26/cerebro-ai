@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "./ui/progress";
-import { FileText, PackagePlus, Sparkles, CheckCircle2 } from "lucide-react";
+import { FileText, PackagePlus, Sparkles, CheckCircle2, Clock } from "lucide-react";
 
 interface ProcessingProgressProps {
   documentId: string;
   fileName: string;
+  fileSize?: number;
   onComplete?: () => void;
 }
 
@@ -13,7 +14,68 @@ interface ProcessingStatus {
   progress: number;
   stage: string;
   status: string;
+  fileSize?: number;
 }
+
+// Estimate processing time based on file size (in seconds)
+const estimateStageTime = (stage: string, fileSize: number = 0): number => {
+  const sizeInMB = fileSize / (1024 * 1024);
+  
+  switch (stage) {
+    case 'pending':
+      return 2;
+    case 'extracting':
+      // PDF extraction: ~3-5 seconds per MB
+      return Math.max(5, Math.min(30, sizeInMB * 4));
+    case 'chunking':
+      // Chunking is very fast
+      return Math.max(2, sizeInMB * 0.5);
+    case 'embedding':
+      // Embedding generation: ~10-20 seconds per MB (depends on chunks)
+      return Math.max(10, Math.min(60, sizeInMB * 15));
+    default:
+      return 5;
+  }
+};
+
+const calculateTimeRemaining = (progress: number, stage: string, fileSize: number = 0): string => {
+  if (progress >= 100) return "0s";
+  
+  // Calculate remaining progress percentage for current stage
+  const stageRanges: Record<string, { start: number; end: number }> = {
+    pending: { start: 0, end: 10 },
+    extracting: { start: 10, end: 33 },
+    chunking: { start: 33, end: 50 },
+    embedding: { start: 50, end: 100 },
+  };
+  
+  const currentRange = stageRanges[stage] || { start: 0, end: 100 };
+  const stageProgress = currentRange.end - currentRange.start;
+  const currentStageProgress = progress - currentRange.start;
+  const stageCompletion = currentStageProgress / stageProgress;
+  
+  // Get estimated time for current stage
+  const stageTime = estimateStageTime(stage, fileSize);
+  const remainingStageTime = stageTime * (1 - stageCompletion);
+  
+  // Add estimated time for remaining stages
+  let totalRemaining = remainingStageTime;
+  const stages = ['pending', 'extracting', 'chunking', 'embedding'];
+  const currentStageIndex = stages.indexOf(stage);
+  
+  for (let i = currentStageIndex + 1; i < stages.length; i++) {
+    totalRemaining += estimateStageTime(stages[i], fileSize);
+  }
+  
+  // Format time
+  if (totalRemaining < 60) {
+    return `${Math.ceil(totalRemaining)}s`;
+  } else {
+    const minutes = Math.floor(totalRemaining / 60);
+    const seconds = Math.ceil(totalRemaining % 60);
+    return `${minutes}m ${seconds}s`;
+  }
+};
 
 const stageIcons = {
   pending: FileText,
@@ -31,11 +93,12 @@ const stageLabels = {
   complete: "Complete!",
 };
 
-export function ProcessingProgress({ documentId, fileName, onComplete }: ProcessingProgressProps) {
+export function ProcessingProgress({ documentId, fileName, fileSize, onComplete }: ProcessingProgressProps) {
   const [status, setStatus] = useState<ProcessingStatus>({
     progress: 0,
     stage: 'pending',
     status: 'processing',
+    fileSize,
   });
 
   useEffect(() => {
@@ -43,7 +106,7 @@ export function ProcessingProgress({ documentId, fileName, onComplete }: Process
     const fetchStatus = async () => {
       const { data } = await supabase
         .from('documents')
-        .select('processing_progress, processing_stage, status')
+        .select('processing_progress, processing_stage, status, file_size')
         .eq('id', documentId)
         .single();
       
@@ -52,6 +115,7 @@ export function ProcessingProgress({ documentId, fileName, onComplete }: Process
           progress: data.processing_progress || 0,
           stage: data.processing_stage || 'pending',
           status: data.status,
+          fileSize: data.file_size || fileSize,
         });
 
         if (data.status === 'ready') {
@@ -75,11 +139,12 @@ export function ProcessingProgress({ documentId, fileName, onComplete }: Process
         },
         (payload) => {
           const newData = payload.new as any;
-          setStatus({
+          setStatus(prev => ({
             progress: newData.processing_progress || 0,
             stage: newData.processing_stage || 'pending',
             status: newData.status,
-          });
+            fileSize: prev.fileSize || newData.file_size,
+          }));
 
           if (newData.status === 'ready') {
             onComplete?.();
@@ -95,6 +160,7 @@ export function ProcessingProgress({ documentId, fileName, onComplete }: Process
 
   const Icon = stageIcons[status.stage as keyof typeof stageIcons] || FileText;
   const label = stageLabels[status.stage as keyof typeof stageLabels] || "Processing...";
+  const timeRemaining = calculateTimeRemaining(status.progress, status.stage, status.fileSize);
 
   if (status.status === 'ready') {
     return null;
@@ -105,14 +171,20 @@ export function ProcessingProgress({ documentId, fileName, onComplete }: Process
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-primary animate-pulse" />
-          <span className="text-sm font-medium">{fileName}</span>
+          <span className="text-sm font-medium truncate max-w-[200px]">{fileName}</span>
         </div>
         <span className="text-xs text-muted-foreground">{status.progress}%</span>
       </div>
       
       <div className="space-y-2">
         <Progress value={status.progress} className="h-2" />
-        <p className="text-xs text-muted-foreground">{label}</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            <span>~{timeRemaining}</span>
+          </div>
+        </div>
       </div>
     </div>
   );

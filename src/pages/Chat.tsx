@@ -8,6 +8,11 @@ import { useToast } from "@/hooks/use-toast";
 import { DocumentSidebar } from "@/components/DocumentSidebar";
 import { ChatInterface } from "@/components/ChatInterface";
 import { UploadDialog } from "@/components/UploadDialog";
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "@/components/ui/resizable";
 
 const Chat = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -75,11 +80,18 @@ const Chat = () => {
       </header>
 
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
-        <DocumentSidebar userId={user.id} />
-        <main className="flex-1 flex flex-col">
-          <ChatInterface userId={user.id} />
-        </main>
+      <div className="flex-1 overflow-hidden">
+        <ResizablePanelGroup direction="horizontal" className="h-full">
+          <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
+            <DocumentSidebar userId={user.id} />
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={75}>
+            <main className="h-full flex flex-col">
+              <ChatInterface userId={user.id} />
+            </main>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
 
       {/* Upload Dialog */}

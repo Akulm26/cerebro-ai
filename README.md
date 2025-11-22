@@ -1,14 +1,10 @@
-# Welcome to your Lovable project
+# Welcome to Cerebro AI
 
 ## Project info
 
 **URL**: https://lovable.dev/projects/bdcc4016-b291-4caa-85ac-fd8933e6afff
 
-## How can I edit this code?
 
-There are several ways of editing your application.
-
-**Use Lovable**
 
 Simply visit the [Lovable Project](https://lovable.dev/projects/bdcc4016-b291-4caa-85ac-fd8933e6afff) and start prompting.
 

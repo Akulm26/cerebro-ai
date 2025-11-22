@@ -62,51 +62,65 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
     if (!renamingFolder || !newFolderName.trim()) return;
 
     const trimmedName = newFolderName.trim();
+    const isUncategorized = renamingFolder === 'Uncategorized';
 
     // Optimistically update UI so the app feels instant
     setIsRenaming(true);
     setDocuments(prev =>
       prev.map(doc =>
-        doc.folder === renamingFolder ? { ...doc, folder: trimmedName } : doc
+        doc.folder === trimmedName
+          ? doc
+          : (isUncategorized && doc.folder === null) || doc.folder === renamingFolder
+            ? { ...doc, folder: trimmedName }
+            : doc
       )
     );
 
     try {
+      let docsQuery = supabase
+        .from('documents')
+        .update({ folder: trimmedName })
+        .eq('user_id', userId);
+
+      let chunksQuery = supabase
+        .from('document_chunks')
+        .update({ folder: trimmedName })
+        .eq('user_id', userId);
+
+      if (isUncategorized) {
+        docsQuery = docsQuery.is('folder', null);
+        chunksQuery = chunksQuery.is('folder', null);
+      } else {
+        docsQuery = docsQuery.eq('folder', renamingFolder);
+        chunksQuery = chunksQuery.eq('folder', renamingFolder);
+      }
+
       const [{ error: docsError }, { error: chunksError }] = await Promise.all([
-        supabase
-          .from('documents')
-          .update({ folder: trimmedName })
-          .eq('user_id', userId)
-          .eq('folder', renamingFolder),
-        supabase
-          .from('document_chunks')
-          .update({ folder: trimmedName })
-          .eq('user_id', userId)
-          .eq('folder', renamingFolder),
+        docsQuery,
+        chunksQuery,
       ]);
 
       if (docsError) throw docsError;
       if (chunksError) throw chunksError;
 
       toast({
-        title: "Folder renamed",
+        title: 'Folder renamed',
         description: `Folder renamed to "${trimmedName}"`,
       });
     } catch (error: any) {
       // Reload from backend to ensure consistency if something went wrong
       fetchDocuments();
       toast({
-        title: "Error renaming folder",
+        title: 'Error renaming folder',
         description: error.message,
-        variant: "destructive",
+        variant: 'destructive',
       });
     } finally {
       setIsRenaming(false);
       setRenamingFolder(null);
-      setNewFolderName("");
+      setNewFolderName('');
     }
   };
-
   const startRenaming = (folderName: string) => {
     setRenamingFolder(folderName);
     setNewFolderName(folderName);

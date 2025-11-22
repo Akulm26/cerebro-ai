@@ -56,6 +56,7 @@ export type Database = {
           folder: string | null
           id: string
           metadata: Json | null
+          parent_folder: string | null
           token_count: number | null
           user_id: string
         }
@@ -68,6 +69,7 @@ export type Database = {
           folder?: string | null
           id?: string
           metadata?: Json | null
+          parent_folder?: string | null
           token_count?: number | null
           user_id: string
         }
@@ -80,6 +82,7 @@ export type Database = {
           folder?: string | null
           id?: string
           metadata?: Json | null
+          parent_folder?: string | null
           token_count?: number | null
           user_id?: string
         }
@@ -112,6 +115,7 @@ export type Database = {
           folder: string | null
           id: string
           metadata: Json | null
+          parent_folder: string | null
           source_type: string | null
           status: string
           text_length: number | null
@@ -129,6 +133,7 @@ export type Database = {
           folder?: string | null
           id?: string
           metadata?: Json | null
+          parent_folder?: string | null
           source_type?: string | null
           status?: string
           text_length?: number | null
@@ -146,6 +151,7 @@ export type Database = {
           folder?: string | null
           id?: string
           metadata?: Json | null
+          parent_folder?: string | null
           source_type?: string | null
           status?: string
           text_length?: number | null

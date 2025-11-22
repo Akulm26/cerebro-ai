@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { DocumentSidebar } from "@/components/DocumentSidebar";
 import { ChatInterface } from "@/components/ChatInterface";
 import { UploadDialog } from "@/components/UploadDialog";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -62,6 +63,7 @@ const Chat = () => {
             <h1 className="text-xl font-bold">Cerebro</h1>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <Button
               variant="outline"
               size="sm"

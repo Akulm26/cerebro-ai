@@ -49,22 +49,23 @@ export const MergeFoldersDialog = ({
     setIsMerging(true);
 
     try {
-      // Update documents
+      // Set the source folder as a child of the target folder
+      // Keep the source folder name but set parent_folder to target
       const { error: docError } = await supabase
         .from('documents')
         .update({ 
-          folder: targetFolder === "Uncategorized" ? null : targetFolder 
+          parent_folder: targetFolder === "Uncategorized" ? null : targetFolder 
         })
         .eq('user_id', userId)
         .eq('folder', sourceFolder === "Uncategorized" ? null : sourceFolder);
 
       if (docError) throw docError;
 
-      // Update document chunks
+      // Update document chunks with parent folder
       const { error: chunkError } = await supabase
         .from('document_chunks')
         .update({ 
-          folder: targetFolder === "Uncategorized" ? null : targetFolder 
+          parent_folder: targetFolder === "Uncategorized" ? null : targetFolder 
         })
         .eq('user_id', userId)
         .eq('folder', sourceFolder === "Uncategorized" ? null : sourceFolder);
@@ -73,7 +74,7 @@ export const MergeFoldersDialog = ({
 
       toast({
         title: "Folders merged",
-        description: `All documents from "${sourceFolder}" moved to "${targetFolder}"`,
+        description: `"${sourceFolder}" is now nested under "${targetFolder}"`,
       });
 
       onMergeComplete();
@@ -97,13 +98,13 @@ export const MergeFoldersDialog = ({
         <DialogHeader>
           <DialogTitle>Merge Folders</DialogTitle>
           <DialogDescription>
-            Move all documents from one folder into another. The source folder will be removed.
+            Nest the source folder under the target folder. The source folder will become a subfolder of the target.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="source">Source Folder (will be removed)</Label>
+            <Label htmlFor="source">Student Folder (will become subfolder)</Label>
             <Select value={sourceFolder} onValueChange={setSourceFolder}>
               <SelectTrigger id="source">
                 <SelectValue placeholder="Select source folder" />
@@ -119,7 +120,7 @@ export const MergeFoldersDialog = ({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="target">Target Folder (keep documents here)</Label>
+            <Label htmlFor="target">Master Folder (parent folder)</Label>
             <Select value={targetFolder} onValueChange={setTargetFolder}>
               <SelectTrigger id="target">
                 <SelectValue placeholder="Select target folder" />

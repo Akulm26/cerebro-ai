@@ -4,6 +4,16 @@ import { Progress } from "./ui/progress";
 import { Button } from "./ui/button";
 import { FileText, PackagePlus, Sparkles, CheckCircle2, Clock, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ProcessingProgressProps {
   documentId: string;
@@ -103,6 +113,7 @@ export function ProcessingProgress({ documentId, fileName, fileSize, onComplete 
     fileSize,
   });
   const [isCancelling, setIsCancelling] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -162,7 +173,12 @@ export function ProcessingProgress({ documentId, fileName, fileSize, onComplete 
     };
   }, [documentId, onComplete]);
 
-  const handleCancel = async () => {
+  const handleCancelClick = () => {
+    setShowCancelDialog(true);
+  };
+
+  const handleConfirmCancel = async () => {
+    setShowCancelDialog(false);
     setIsCancelling(true);
     try {
       // Delete document chunks first
@@ -204,36 +220,55 @@ export function ProcessingProgress({ documentId, fileName, fileSize, onComplete 
   }
 
   return (
-    <div className="space-y-3 p-4 border border-border rounded-lg bg-card">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <Icon className="h-4 w-4 text-primary animate-pulse" />
-          <span className="text-sm font-medium truncate">{fileName}</span>
-        </div>
-        <div className="flex items-center gap-2 ml-2">
-          <span className="text-xs text-muted-foreground">{status.progress}%</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCancel}
-            disabled={isCancelling}
-            className="h-6 w-6 p-0"
-          >
-            <X className="h-3 w-3" />
-          </Button>
-        </div>
-      </div>
-      
-      <div className="space-y-2">
-        <Progress value={status.progress} className="h-2" />
+    <>
+      <div className="space-y-3 p-4 border border-border rounded-lg bg-card">
         <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">{label}</p>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Clock className="h-3 w-3" />
-            <span>~{timeRemaining}</span>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <Icon className="h-4 w-4 text-primary animate-pulse" />
+            <span className="text-sm font-medium truncate">{fileName}</span>
+          </div>
+          <div className="flex items-center gap-2 ml-2">
+            <span className="text-xs text-muted-foreground">{status.progress}%</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleCancelClick}
+              disabled={isCancelling}
+              className="h-6 w-6 p-0"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+      
+        <div className="space-y-2">
+          <Progress value={status.progress} className="h-2" />
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Clock className="h-3 w-3" />
+              <span>~{timeRemaining}</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel upload?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel processing "{fileName}"? This action cannot be undone and you'll need to upload the file again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continue Processing</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmCancel} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Cancel Upload
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

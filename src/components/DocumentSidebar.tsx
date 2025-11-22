@@ -43,7 +43,9 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [expandedMasterFolders, setExpandedMasterFolders] = useState<Record<string, boolean>>({});
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
+  const [renamingMasterFolder, setRenamingMasterFolder] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
+  const [newMasterFolderName, setNewMasterFolderName] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
   const [showMergeDialog, setShowMergeDialog] = useState(false);
   const [showMasterDialog, setShowMasterDialog] = useState(false);
@@ -262,6 +264,60 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
     setNewFolderName(folderName);
   };
 
+  const startRenamingMaster = (masterFolderName: string) => {
+    setRenamingMasterFolder(masterFolderName);
+    setNewMasterFolderName(masterFolderName);
+  };
+
+  const handleRenameMasterFolder = async () => {
+    if (!renamingMasterFolder || !newMasterFolderName.trim()) return;
+
+    const trimmedName = newMasterFolderName.trim();
+
+    setIsRenaming(true);
+    setDocuments(prev =>
+      prev.map(doc =>
+        doc.parent_folder === renamingMasterFolder
+          ? { ...doc, parent_folder: trimmedName }
+          : doc
+      )
+    );
+
+    try {
+      const [{ error: docsError }, { error: chunksError }] = await Promise.all([
+        supabase
+          .from('documents')
+          .update({ parent_folder: trimmedName })
+          .eq('user_id', userId)
+          .eq('parent_folder', renamingMasterFolder),
+        supabase
+          .from('document_chunks')
+          .update({ parent_folder: trimmedName })
+          .eq('user_id', userId)
+          .eq('parent_folder', renamingMasterFolder),
+      ]);
+
+      if (docsError) throw docsError;
+      if (chunksError) throw chunksError;
+
+      toast({
+        title: 'Master folder renamed',
+        description: `Master folder renamed to "${trimmedName}"`,
+      });
+    } catch (error: any) {
+      fetchDocuments();
+      toast({
+        title: 'Error renaming master folder',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRenaming(false);
+      setRenamingMasterFolder(null);
+      setNewMasterFolderName('');
+    }
+  };
+
   const fetchDocuments = async () => {
     try {
       const { data, error } = await supabase
@@ -455,17 +511,31 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                   onOpenChange={() => toggleMasterFolder(masterGroup.masterFolderName)}
                   className="space-y-2"
                 >
-                  <CollapsibleTrigger className="flex items-center gap-2 w-full hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors">
-                    {expandedMasterFolders[masterGroup.masterFolderName] ? (
-                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                    )}
-                    <Folder className="w-5 h-5 text-blue-500" />
-                    <h3 className="text-sm font-bold text-foreground flex-1 text-left">
-                      {masterGroup.masterFolderName}
-                    </h3>
-                  </CollapsibleTrigger>
+                  <div className="flex items-center gap-1 w-full group">
+                    <CollapsibleTrigger className="flex items-center gap-2 flex-1 hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors">
+                      {expandedMasterFolders[masterGroup.masterFolderName] ? (
+                        <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      )}
+                      <Folder className="w-5 h-5 text-blue-500" />
+                      <h3 className="text-sm font-bold text-foreground flex-1 text-left">
+                        {masterGroup.masterFolderName}
+                      </h3>
+                    </CollapsibleTrigger>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startRenamingMaster(masterGroup.masterFolderName);
+                      }}
+                      title="Rename master folder"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                    </Button>
+                  </div>
                   <CollapsibleContent className="pl-4 space-y-2">
                     {masterGroup.folders.map((folderGroup) => (
                       <Collapsible
@@ -775,6 +845,47 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
               Cancel
             </Button>
             <Button onClick={handleRenameFolder} disabled={!newFolderName.trim() || isRenaming}>
+              {isRenaming ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                "Rename"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Master Folder Dialog */}
+      <Dialog open={renamingMasterFolder !== null} onOpenChange={(open) => !open && setRenamingMasterFolder(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Master Folder</DialogTitle>
+            <DialogDescription>
+              Enter a new name for the master folder "{renamingMasterFolder}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="master-folder-name">Master Folder Name</Label>
+              <Input
+                id="master-folder-name"
+                value={newMasterFolderName}
+                onChange={(e) => setNewMasterFolderName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleRenameMasterFolder();
+                  }
+                }}
+                placeholder="Enter master folder name"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenamingMasterFolder(null)} disabled={isRenaming}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameMasterFolder} disabled={!newMasterFolderName.trim() || isRenaming}>
               {isRenaming ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (

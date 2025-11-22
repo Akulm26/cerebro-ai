@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Progress } from "./ui/progress";
-import { FileText, PackagePlus, Sparkles, CheckCircle2, Clock } from "lucide-react";
+import { Button } from "./ui/button";
+import { FileText, PackagePlus, Sparkles, CheckCircle2, Clock, X } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface ProcessingProgressProps {
   documentId: string;
@@ -100,6 +102,8 @@ export function ProcessingProgress({ documentId, fileName, fileSize, onComplete 
     status: 'processing',
     fileSize,
   });
+  const [isCancelling, setIsCancelling] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     // Fetch initial status
@@ -158,6 +162,39 @@ export function ProcessingProgress({ documentId, fileName, fileSize, onComplete 
     };
   }, [documentId, onComplete]);
 
+  const handleCancel = async () => {
+    setIsCancelling(true);
+    try {
+      // Delete document chunks first
+      await supabase
+        .from('document_chunks')
+        .delete()
+        .eq('document_id', documentId);
+      
+      // Delete the document
+      await supabase
+        .from('documents')
+        .delete()
+        .eq('id', documentId);
+
+      toast({
+        title: "Processing cancelled",
+        description: "The document upload has been cancelled",
+      });
+
+      onComplete?.();
+    } catch (error) {
+      console.error('Error cancelling upload:', error);
+      toast({
+        title: "Cancellation failed",
+        description: "Could not cancel the upload",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   const Icon = stageIcons[status.stage as keyof typeof stageIcons] || FileText;
   const label = stageLabels[status.stage as keyof typeof stageLabels] || "Processing...";
   const timeRemaining = calculateTimeRemaining(status.progress, status.stage, status.fileSize);
@@ -169,11 +206,22 @@ export function ProcessingProgress({ documentId, fileName, fileSize, onComplete 
   return (
     <div className="space-y-3 p-4 border border-border rounded-lg bg-card">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           <Icon className="h-4 w-4 text-primary animate-pulse" />
-          <span className="text-sm font-medium truncate max-w-[200px]">{fileName}</span>
+          <span className="text-sm font-medium truncate">{fileName}</span>
         </div>
-        <span className="text-xs text-muted-foreground">{status.progress}%</span>
+        <div className="flex items-center gap-2 ml-2">
+          <span className="text-xs text-muted-foreground">{status.progress}%</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCancel}
+            disabled={isCancelling}
+            className="h-6 w-6 p-0"
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
       </div>
       
       <div className="space-y-2">

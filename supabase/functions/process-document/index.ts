@@ -87,6 +87,17 @@ serve(async (req) => {
           // Limit text length
           text = text.substring(0, 100000);
 
+          // Get existing folders for better classification
+          const { data: existingDocs } = await supabase
+            .from('documents')
+            .select('folder')
+            .eq('user_id', userId)
+            .not('folder', 'is', null);
+          
+          const existingFolders = existingDocs 
+            ? [...new Set(existingDocs.map(d => d.folder).filter(Boolean))]
+            : [];
+
           // Classify document into folder
           console.log(`[${fileName}] Classifying document topic`);
           let folder = 'Uncategorized';
@@ -100,6 +111,7 @@ serve(async (req) => {
               body: JSON.stringify({
                 text,
                 fileName,
+                existingFolders,
               }),
             });
             

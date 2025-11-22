@@ -46,6 +46,41 @@ serve(async (req) => {
       throw new Error('Could not extract sufficient content from URL');
     }
 
+    // Get existing folders for better classification
+    const { data: existingDocs } = await supabase
+      .from('documents')
+      .select('folder')
+      .eq('user_id', userId)
+      .not('folder', 'is', null);
+    
+    const existingFolders = existingDocs 
+      ? [...new Set(existingDocs.map(d => d.folder).filter(Boolean))]
+      : [];
+
+    // Classify the content
+    let folder = 'Uncategorized';
+    try {
+      const classifyResponse = await fetch(`${supabaseUrl}/functions/v1/classify-topic`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({
+          text,
+          fileName: new URL(url).hostname,
+          existingFolders,
+        }),
+      });
+      
+      if (classifyResponse.ok) {
+        const classifyData = await classifyResponse.json();
+        folder = classifyData.folder || 'Uncategorized';
+      }
+    } catch (error) {
+      console.error('Classification failed:', error);
+    }
+
     // Create document entry
     const urlObj = new URL(url);
     const fileName = urlObj.hostname + urlObj.pathname.replace(/\//g, '_');
@@ -58,6 +93,7 @@ serve(async (req) => {
         file_type: 'url',
         content_url: url,
         status: 'processing',
+        folder,
       })
       .select()
       .single();

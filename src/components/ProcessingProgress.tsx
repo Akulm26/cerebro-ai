@@ -121,7 +121,7 @@ export function ProcessingProgress({ documentId, fileName, fileSize, onComplete 
     const fetchStatus = async () => {
       const { data } = await supabase
         .from('documents')
-        .select('processing_progress, processing_stage, status, file_size')
+        .select('processing_progress, processing_stage, status, file_size, error_message')
         .eq('id', documentId)
         .single();
       
@@ -135,6 +135,12 @@ export function ProcessingProgress({ documentId, fileName, fileSize, onComplete 
 
         if (data.status === 'ready') {
           onComplete?.();
+        } else if (data.status === 'error' && data.error_message) {
+          toast({
+            title: "Processing failed",
+            description: data.error_message,
+            variant: "destructive",
+          });
         }
       }
     };
@@ -163,6 +169,14 @@ export function ProcessingProgress({ documentId, fileName, fileSize, onComplete 
 
           if (newData.status === 'ready') {
             onComplete?.();
+          } else if (newData.status === 'error' && newData.error_message) {
+            toast({
+              title: "Processing failed",
+              description: newData.error_message,
+              variant: "destructive",
+            });
+            // Auto-remove after showing error
+            setTimeout(() => onComplete?.(), 3000);
           }
         }
       )
@@ -215,8 +229,32 @@ export function ProcessingProgress({ documentId, fileName, fileSize, onComplete 
   const label = stageLabels[status.stage as keyof typeof stageLabels] || "Processing...";
   const timeRemaining = calculateTimeRemaining(status.progress, status.stage, status.fileSize);
 
+  // Don't show if completed successfully
   if (status.status === 'ready') {
     return null;
+  }
+
+  // Show error state
+  if (status.status === 'error') {
+    return (
+      <div className="p-4 border border-destructive rounded-lg bg-destructive/10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <X className="h-4 w-4 text-destructive" />
+            <span className="text-sm font-medium truncate">{fileName}</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCancelClick}
+            className="h-6 w-6 p-0"
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+        <p className="text-xs text-destructive mt-2">Processing failed - check console for details</p>
+      </div>
+    );
   }
 
   return (

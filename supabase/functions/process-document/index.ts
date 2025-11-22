@@ -356,15 +356,14 @@ function detectImageMimeType(buffer: Uint8Array): string {
 
 async function extractTextFromPDF(buffer: Uint8Array): Promise<string> {
   try {
-    // Use pdfjs-dist for better Deno compatibility
-    const pdfjsLib = await import('https://esm.sh/pdfjs-dist@4.0.379/legacy/build/pdf.mjs');
-    
-    // Configure worker for Deno environment
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://esm.sh/pdfjs-dist@4.0.379/legacy/build/pdf.worker.mjs';
+    // Use pdfjs-serverless for Deno/edge function compatibility (no workers needed)
+    const { getDocument } = await import('https://esm.sh/pdfjs-serverless@0.3.2');
     
     // Load PDF document
-    const loadingTask = pdfjsLib.getDocument({ data: buffer });
-    const pdf = await loadingTask.promise;
+    const pdf = await getDocument({ 
+      data: buffer,
+      useSystemFonts: true 
+    }).promise;
     
     let fullText = '';
     

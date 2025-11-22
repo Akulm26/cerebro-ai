@@ -181,21 +181,32 @@ export const ChatInterface = ({ userId }: { userId: string }) => {
                   <div className="prose prose-sm dark:prose-invert max-w-none">
                     {message.content}
                   </div>
-                  {message.sources && message.sources.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-border/50">
-                      <p className="text-xs font-semibold mb-2 flex items-center gap-1">
-                        <FileText className="w-3 h-3" />
-                        📚 Sources from your knowledge base:
-                      </p>
-                      <div className="space-y-1">
-                        {message.sources.map((source: any, idx: number) => (
-                          <p key={idx} className="text-xs text-muted-foreground">
-                            • {source.folder} / {source.document_name} ({(source.similarity * 100).toFixed(0)}% relevance)
-                          </p>
-                        ))}
+                  {message.sources && message.sources.length > 0 && (() => {
+                    // Deduplicate sources by document name, keeping highest relevance
+                    const uniqueSources = message.sources.reduce((acc: any[], source: any) => {
+                      const existing = acc.find(s => s.document_name === source.document_name);
+                      if (!existing || source.similarity > existing.similarity) {
+                        return [...acc.filter(s => s.document_name !== source.document_name), source];
+                      }
+                      return acc;
+                    }, []).sort((a: any, b: any) => b.similarity - a.similarity);
+                    
+                    return (
+                      <div className="mt-3 pt-3 border-t border-border/50">
+                        <p className="text-xs font-semibold mb-2 flex items-center gap-1">
+                          <FileText className="w-3 h-3" />
+                          📚 Sources from your knowledge base:
+                        </p>
+                        <div className="space-y-1">
+                          {uniqueSources.map((source: any, idx: number) => (
+                            <p key={idx} className="text-xs text-muted-foreground">
+                              • {source.folder} / {source.document_name} ({(source.similarity * 100).toFixed(0)}% relevance)
+                            </p>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </Card>
                 {message.role === 'user' && (
                   <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">

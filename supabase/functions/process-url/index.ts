@@ -16,43 +16,72 @@ serve(async (req) => {
   try {
     const { url, userId } = await req.json();
 
-    // Check for Google Docs URLs
-    if (url.includes('docs.google.com')) {
-      throw new Error('Google Docs URLs are not supported. Please download the document as PDF or DOCX and upload it directly using the file upload feature.');
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const openAIKey = Deno.env.get('OPENAI_API_KEY')!;
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    let fetchUrl = url;
+    
+    // Handle Google Docs URLs by converting to export format
+    if (url.includes('docs.google.com/document')) {
+      console.log('Detected Google Docs URL, converting to export format...');
+      // Extract document ID from various Google Docs URL formats
+      const docIdMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (docIdMatch && docIdMatch[1]) {
+        const documentId = docIdMatch[1];
+        // Use plain text export for better content extraction
+        fetchUrl = `https://docs.google.com/document/d/${documentId}/export?format=txt`;
+        console.log(`Using export URL: ${fetchUrl}`);
+      } else {
+        throw new Error('Could not extract document ID from Google Docs URL. Please ensure the URL is valid.');
+      }
+    }
+
     // Fetch the URL with a proper user agent
-    const response = await fetch(url, {
+    const response = await fetch(fetchUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
-    const html = await response.text();
     
-    // Parse HTML and extract text
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    
-    if (!doc) {
-      throw new Error('Failed to parse HTML');
+    if (!response.ok) {
+      throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}. If this is a Google Doc, make sure it's publicly accessible (anyone with the link can view).`);
     }
     
-    // Remove script and style elements
-    const scripts = doc.querySelectorAll('script, style');
-    scripts.forEach(el => el.parentNode?.removeChild(el));
+    const html = await response.text();
     
-    // Get text content
-    let text = doc.body?.textContent || '';
-    text = text.replace(/\s+/g, ' ').trim();
-    text = text.substring(0, 100000); // Limit to 100k chars
+    // For plain text exports (Google Docs), use the text directly
+    let text = '';
+    
+    if (fetchUrl.includes('export?format=txt')) {
+      // Plain text export from Google Docs
+      text = html.trim();
+      console.log(`Extracted ${text.length} characters from Google Docs export`);
+    } else {
+      // Parse HTML and extract text for regular URLs
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      
+      if (!doc) {
+        throw new Error('Failed to parse HTML');
+      }
+      
+      // Remove script and style elements
+      const scripts = doc.querySelectorAll('script, style');
+      scripts.forEach(el => el.parentNode?.removeChild(el));
+      
+      // Get text content
+      text = doc.body?.textContent || '';
+      text = text.replace(/\s+/g, ' ').trim();
+      console.log(`Extracted ${text.length} characters from HTML`);
+    }
+    
+    // Limit to 100k chars
+    text = text.substring(0, 100000);
 
     if (text.length < 100) {
-      throw new Error('Could not extract sufficient content from URL. The page may require JavaScript or may be behind authentication.');
+      throw new Error('Could not extract sufficient content from URL. The page may require JavaScript, may be behind authentication, or the document may be empty.');
     }
 
     // Check for common error messages that indicate failed extraction
@@ -60,12 +89,14 @@ serve(async (req) => {
       'javascript is not enabled',
       'browser version is no longer supported',
       'enable javascript',
-      'please enable cookies'
+      'please enable cookies',
+      'access denied',
+      'permission denied'
     ];
     
     const lowerText = text.toLowerCase();
     if (errorIndicators.some(indicator => lowerText.includes(indicator))) {
-      throw new Error('This URL requires JavaScript or authentication. Please download the content and upload it as a file instead.');
+      throw new Error('This URL requires JavaScript or authentication. For Google Docs, make sure the document is set to "Anyone with the link can view".');
     }
 
     // Get existing folders for better classification

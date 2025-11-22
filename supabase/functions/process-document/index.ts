@@ -88,10 +88,18 @@ serve(async (req) => {
             }
           } else if (fileType.startsWith('image/')) {
             console.log('Processing image with OCR...');
-            text = await ocrImage(buffer);
-            
-            if (text.trim().length === 0) {
-              throw new Error('Could not extract text from image - OCR found no text');
+            try {
+              text = await ocrImage(buffer);
+              
+              // If no text found, create a minimal entry rather than failing
+              if (text.trim().length === 0) {
+                text = `[Image: ${fileName}]\n\nThis image was uploaded but no text content could be extracted via OCR. The image may be purely graphical or the text may not be machine-readable.`;
+                console.log('No text extracted from image, using placeholder');
+              }
+            } catch (ocrError) {
+              console.error('OCR processing failed:', ocrError);
+              // Create a document entry even if OCR fails
+              text = `[Image: ${fileName}]\n\nThis image was uploaded but OCR processing encountered an error. The image has been stored for reference.`;
             }
           } else {
             // For other text files, decode as text
@@ -284,24 +292,37 @@ async function ocrImage(buffer: Uint8Array): Promise<string> {
   try {
     console.log('Starting OCR on image...');
     
-    // Convert buffer to base64 data URL
-    const base64 = btoa(String.fromCharCode(...buffer));
+    // Simplified OCR approach - convert buffer more carefully
+    const base64 = btoa(
+      buffer.reduce((data, byte) => data + String.fromCharCode(byte), '')
+    );
     const mimeType = detectImageMimeType(buffer);
     const dataUrl = `data:${mimeType};base64,${base64}`;
     
-    // Initialize Tesseract worker
-    const worker = await Tesseract.createWorker('eng');
+    // Initialize Tesseract worker with error handling
+    const worker = await Tesseract.createWorker('eng', 1, {
+      errorHandler: (err: Error) => console.error('Tesseract error:', err),
+    });
     
-    // Perform OCR
-    const { data: { text } } = await worker.recognize(dataUrl);
+    // Perform OCR with timeout protection
+    const result = await Promise.race([
+      worker.recognize(dataUrl),
+      new Promise<null>((_, reject) => 
+        setTimeout(() => reject(new Error('OCR timeout')), 30000)
+      )
+    ]);
     
     await worker.terminate();
     
-    console.log(`OCR extracted ${text.length} characters`);
-    return text;
+    if (result && result.data && result.data.text) {
+      console.log(`OCR extracted ${result.data.text.length} characters`);
+      return result.data.text;
+    }
+    
+    return '';
   } catch (error) {
     console.error('Error performing OCR on image:', error);
-    return '';
+    throw error; // Throw so parent can handle gracefully
   }
 }
 

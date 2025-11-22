@@ -120,15 +120,15 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
 
   if (loading) {
     return (
-      <aside className="w-80 border-r bg-doc-sidebar p-4 flex items-center justify-center">
+      <aside className="h-full border-r bg-doc-sidebar p-4 flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
       </aside>
     );
   }
 
   return (
-    <aside className="w-80 border-r bg-doc-sidebar flex flex-col">
-      <div className="p-4 border-b">
+    <aside className="h-full border-r bg-doc-sidebar flex flex-col">
+      <div className="p-4 border-b flex-shrink-0">
         <h2 className="font-semibold text-lg">Documents</h2>
         <p className="text-sm text-muted-foreground mt-1">
           {documents.length} {documents.length === 1 ? 'document' : 'documents'}

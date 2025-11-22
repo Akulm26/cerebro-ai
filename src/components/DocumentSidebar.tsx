@@ -140,6 +140,11 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
     e.dataTransfer.effectAllowed = 'move';
   };
 
+  const handleDragEnd = () => {
+    setDraggedDoc(null);
+    setDragOverFolder(null);
+  };
+
   const handleDragOver = (e: React.DragEvent, folderName: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
@@ -153,13 +158,15 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
 
   const handleDrop = async (e: React.DragEvent, targetFolder: string) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragOverFolder(null);
     if (!draggedDoc) return;
 
     const normalizedTargetFolder = targetFolder === 'Uncategorized' ? null : targetFolder;
+    const currentFolder = draggedDoc.folder === null ? 'Uncategorized' : draggedDoc.folder;
     
     // Skip if dropping on the same folder
-    if (draggedDoc.folder === normalizedTargetFolder) {
+    if (currentFolder === targetFolder) {
       setDraggedDoc(null);
       return;
     }
@@ -554,7 +561,9 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                       >
                         <div 
                           className={`flex items-center gap-1 w-full group transition-colors rounded-md ${
-                            dragOverFolder === folderGroup.folder ? 'bg-primary/10 ring-2 ring-primary' : ''
+                            draggedDoc && dragOverFolder === folderGroup.folder && (draggedDoc.folder !== folderGroup.folder) 
+                              ? 'bg-primary/10 ring-2 ring-primary' 
+                              : ''
                           }`}
                           onDragOver={(e) => handleDragOver(e, folderGroup.folder)}
                           onDragLeave={handleDragLeave}
@@ -593,6 +602,7 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                           }`}
                           draggable
                           onDragStart={(e) => handleDragStart(e, doc)}
+                          onDragEnd={handleDragEnd}
                         >
                               <div className="flex items-start gap-3">
                                 {getDocumentIcon(doc)}
@@ -668,7 +678,9 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                 >
                   <div 
                     className={`flex items-center gap-1 w-full group transition-colors rounded-md ${
-                      dragOverFolder === folderGroup.folder ? 'bg-primary/10 ring-2 ring-primary' : ''
+                      draggedDoc && dragOverFolder === folderGroup.folder && (draggedDoc.folder !== folderGroup.folder)
+                        ? 'bg-primary/10 ring-2 ring-primary' 
+                        : ''
                     }`}
                     onDragOver={(e) => handleDragOver(e, folderGroup.folder)}
                     onDragLeave={handleDragLeave}
@@ -707,6 +719,7 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                       }`}
                       draggable
                       onDragStart={(e) => handleDragStart(e, doc)}
+                      onDragEnd={handleDragEnd}
                     >
                         <div className="flex items-start gap-3">
                           {getDocumentIcon(doc)}
@@ -779,7 +792,9 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                 >
                   <div 
                     className={`flex items-center gap-1 w-full group transition-colors rounded-md ${
-                      dragOverFolder === folderName ? 'bg-primary/10 ring-2 ring-primary' : ''
+                      draggedDoc && dragOverFolder === folderName && (draggedDoc.folder !== folderName)
+                        ? 'bg-primary/10 ring-2 ring-primary' 
+                        : ''
                     }`}
                     onDragOver={(e) => handleDragOver(e, folderName)}
                     onDragLeave={handleDragLeave}

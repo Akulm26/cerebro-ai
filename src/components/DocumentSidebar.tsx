@@ -62,7 +62,18 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
   };
 
   const handleDelete = async (docId: string) => {
+    if (!confirm('Are you sure you want to delete this document?')) return;
+    
     try {
+      // Delete chunks first
+      const { error: chunksError } = await supabase
+        .from('document_chunks')
+        .delete()
+        .eq('document_id', docId);
+
+      if (chunksError) throw chunksError;
+
+      // Delete document
       const { error } = await supabase
         .from('documents')
         .delete()

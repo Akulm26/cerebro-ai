@@ -99,6 +99,10 @@ const Chat = () => {
         open={showUpload}
         onOpenChange={setShowUpload}
         userId={user.id}
+        onUploadComplete={() => {
+          // Force refresh of documents after upload
+          window.location.reload();
+        }}
       />
     </div>
   );

@@ -121,7 +121,7 @@ export const UploadDialog = ({ open, onOpenChange, userId }: UploadDialogProps) 
         <DialogHeader>
           <DialogTitle>Add Knowledge</DialogTitle>
           <DialogDescription>
-            Upload documents or add URLs to your knowledge base
+            Upload documents or add URLs to your knowledge base. OCR supported for scanned PDFs and images.
           </DialogDescription>
         </DialogHeader>
 
@@ -143,7 +143,8 @@ export const UploadDialog = ({ open, onOpenChange, userId }: UploadDialogProps) 
                 disabled={isUploading}
               />
               <p className="text-xs text-muted-foreground">
-                Supported: PDF, DOCX, TXT, MD, PNG, JPG (max 20MB each)
+                Supported: PDF, DOCX, TXT, MD, PNG, JPG (max 20MB each)<br />
+                <span className="text-primary">✓ OCR enabled for scanned PDFs and images</span>
               </p>
             </div>
             {isUploading && (

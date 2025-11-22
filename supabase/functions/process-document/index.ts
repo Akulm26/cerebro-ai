@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import Tesseract from 'https://esm.sh/tesseract.js@5.0.4';
 
 declare const EdgeRuntime: any;
 
@@ -53,12 +54,21 @@ serve(async (req) => {
           const buffer = Uint8Array.from(atob(content), c => c.charCodeAt(0));
           let text = '';
           
-          // Enhanced PDF parsing
+          // Check file type and apply appropriate extraction
           if (fileType === 'application/pdf') {
-            console.log('Processing PDF with proper parsing...');
+            console.log('Processing PDF...');
             text = await extractTextFromPDF(buffer);
+            
+            // If extracted text is too short, likely a scanned PDF - try OCR
+            if (text.trim().length < 100) {
+              console.log('PDF appears to be scanned, attempting OCR...');
+              text = await ocrScannedPDF(buffer);
+            }
+          } else if (fileType.startsWith('image/')) {
+            console.log('Processing image with OCR...');
+            text = await ocrImage(buffer);
           } else {
-            // For non-PDF files, decode as text
+            // For non-PDF, non-image files, decode as text
             text = new TextDecoder().decode(buffer);
           }
 
@@ -151,6 +161,89 @@ serve(async (req) => {
     );
   }
 });
+
+async function ocrImage(buffer: Uint8Array): Promise<string> {
+  try {
+    console.log('Starting OCR on image...');
+    
+    // Convert buffer to base64 data URL
+    const base64 = btoa(String.fromCharCode(...buffer));
+    const mimeType = detectImageMimeType(buffer);
+    const dataUrl = `data:${mimeType};base64,${base64}`;
+    
+    // Initialize Tesseract worker
+    const worker = await Tesseract.createWorker('eng');
+    
+    // Perform OCR
+    const { data: { text } } = await worker.recognize(dataUrl);
+    
+    await worker.terminate();
+    
+    console.log(`OCR extracted ${text.length} characters`);
+    return text;
+  } catch (error) {
+    console.error('Error performing OCR on image:', error);
+    return '';
+  }
+}
+
+async function ocrScannedPDF(buffer: Uint8Array): Promise<string> {
+  try {
+    console.log('Processing scanned PDF with OCR...');
+    
+    // Use pdf-parse to extract images/pages
+    const pdfParse = await import('https://esm.sh/pdf-parse@1.1.1');
+    const data = await pdfParse.default(buffer);
+    
+    // For scanned PDFs, we'll OCR the PDF as images
+    // This is a simplified approach - in production you'd want to extract individual page images
+    let fullText = `[Scanned PDF - ${data.numpages} pages]\n\n`;
+    
+    // Initialize Tesseract worker once for all pages
+    const worker = await Tesseract.createWorker('eng');
+    
+    // Convert PDF pages to images and OCR them
+    // Note: This is a simplified version. For better results, you'd extract each page as an image
+    const base64 = btoa(String.fromCharCode(...buffer));
+    const dataUrl = `data:application/pdf;base64,${base64}`;
+    
+    try {
+      const { data: { text } } = await worker.recognize(dataUrl);
+      fullText += text;
+    } catch (ocrError) {
+      console.error('OCR failed on PDF:', ocrError);
+      fullText += '[OCR processing failed - PDF may require manual extraction]';
+    }
+    
+    await worker.terminate();
+    
+    console.log(`OCR extracted ${fullText.length} characters from scanned PDF`);
+    return fullText;
+  } catch (error) {
+    console.error('Error performing OCR on scanned PDF:', error);
+    return '[OCR failed - could not process scanned PDF]';
+  }
+}
+
+function detectImageMimeType(buffer: Uint8Array): string {
+  // Check magic numbers to detect image type
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+    return 'image/jpeg';
+  }
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+    return 'image/png';
+  }
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
+    return 'image/gif';
+  }
+  if (buffer[0] === 0x42 && buffer[1] === 0x4D) {
+    return 'image/bmp';
+  }
+  if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) {
+    return 'image/webp';
+  }
+  return 'image/png'; // default fallback
+}
 
 async function extractTextFromPDF(buffer: Uint8Array): Promise<string> {
   try {

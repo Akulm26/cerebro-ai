@@ -79,6 +79,13 @@ serve(async (req) => {
             if (text.trim().length === 0) {
               throw new Error('Could not extract text from PDF - file may be empty or corrupted');
             }
+          } else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+            console.log('Processing Word document (.docx)...');
+            text = await extractTextFromDocx(buffer);
+            
+            if (text.trim().length === 0) {
+              throw new Error('Could not extract text from Word document - file may be empty or corrupted');
+            }
           } else if (fileType.startsWith('image/')) {
             console.log('Processing image with OCR...');
             text = await ocrImage(buffer);
@@ -87,7 +94,7 @@ serve(async (req) => {
               throw new Error('Could not extract text from image - OCR found no text');
             }
           } else {
-            // For non-PDF, non-image files, decode as text
+            // For other text files, decode as text
             text = new TextDecoder().decode(buffer);
           }
           
@@ -143,7 +150,8 @@ serve(async (req) => {
           }
 
           // Chunk the text with smaller size to avoid token limit (8192 tokens = ~6000 words)
-          const chunks = chunkText(text, 200, 50);
+          // Using 150 words per chunk (≈200 tokens) to stay well below limits
+          const chunks = chunkText(text, 150, 30);
 
           // Update progress - chunking complete, starting embeddings
           await supabase
@@ -155,7 +163,8 @@ serve(async (req) => {
             .eq('id', documentId);
 
           // Batch embeddings for better performance (smaller batches to avoid token limits)
-          const batchSize = 5;
+          // Reduced to 3 chunks per batch to stay well under 8192 token limit
+          const batchSize = 3;
           for (let i = 0; i < chunks.length; i += batchSize) {
             const batch = chunks.slice(i, i + batchSize);
             
@@ -381,6 +390,33 @@ async function extractTextFromPDF(buffer: Uint8Array): Promise<string> {
   } catch (error) {
     console.error('Error parsing PDF:', error);
     throw new Error('Failed to extract text from PDF. The file may be corrupted or use an unsupported format.');
+  }
+}
+
+async function extractTextFromDocx(buffer: Uint8Array): Promise<string> {
+  try {
+    console.log('Extracting text from Word document...');
+    
+    // Use mammoth to extract text from .docx files
+    const mammoth = await import('https://esm.sh/mammoth@1.6.0');
+    
+    // Create a new ArrayBuffer from the Uint8Array
+    const arrayBuffer = new ArrayBuffer(buffer.length);
+    const view = new Uint8Array(arrayBuffer);
+    view.set(buffer);
+    
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    
+    console.log(`Extracted ${result.value.length} characters from Word document`);
+    
+    if (result.messages && result.messages.length > 0) {
+      console.log('Mammoth messages:', result.messages);
+    }
+    
+    return result.value;
+  } catch (error) {
+    console.error('Error parsing Word document:', error);
+    throw new Error('Failed to extract text from Word document. The file may be corrupted or use an unsupported format.');
   }
 }
 

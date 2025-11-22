@@ -33,6 +33,7 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
   const { toast } = useToast();
 
   const getDocumentIcon = (doc: Document) => {
@@ -60,47 +61,49 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
   const handleRenameFolder = async () => {
     if (!renamingFolder || !newFolderName.trim()) return;
 
+    const trimmedName = newFolderName.trim();
+
+    // Optimistically update UI so the app feels instant
+    setIsRenaming(true);
+    setDocuments(prev =>
+      prev.map(doc =>
+        doc.folder === renamingFolder ? { ...doc, folder: trimmedName } : doc
+      )
+    );
+
     try {
-      // Update all documents in this folder
-      const { error: docsError } = await supabase
-        .from('documents')
-        .update({ folder: newFolderName.trim() })
-        .eq('user_id', userId)
-        .eq('folder', renamingFolder);
+      const [{ error: docsError }, { error: chunksError }] = await Promise.all([
+        supabase
+          .from('documents')
+          .update({ folder: trimmedName })
+          .eq('user_id', userId)
+          .eq('folder', renamingFolder),
+        supabase
+          .from('document_chunks')
+          .update({ folder: trimmedName })
+          .eq('user_id', userId)
+          .eq('folder', renamingFolder),
+      ]);
 
       if (docsError) throw docsError;
-
-      // Update all document chunks in this folder
-      const { error: chunksError } = await supabase
-        .from('document_chunks')
-        .update({ folder: newFolderName.trim() })
-        .eq('user_id', userId)
-        .eq('folder', renamingFolder);
-
       if (chunksError) throw chunksError;
-
-      // Update local state
-      setDocuments(prev => 
-        prev.map(doc => 
-          doc.folder === renamingFolder 
-            ? { ...doc, folder: newFolderName.trim() }
-            : doc
-        )
-      );
 
       toast({
         title: "Folder renamed",
-        description: `Folder renamed to "${newFolderName.trim()}"`,
+        description: `Folder renamed to "${trimmedName}"`,
       });
-
-      setRenamingFolder(null);
-      setNewFolderName("");
     } catch (error: any) {
+      // Reload from backend to ensure consistency if something went wrong
+      fetchDocuments();
       toast({
         title: "Error renaming folder",
         description: error.message,
         variant: "destructive",
       });
+    } finally {
+      setIsRenaming(false);
+      setRenamingFolder(null);
+      setNewFolderName("");
     }
   };
 
@@ -393,11 +396,15 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenamingFolder(null)}>
+            <Button variant="outline" onClick={() => setRenamingFolder(null)} disabled={isRenaming}>
               Cancel
             </Button>
-            <Button onClick={handleRenameFolder} disabled={!newFolderName.trim()}>
-              Rename
+            <Button onClick={handleRenameFolder} disabled={!newFolderName.trim() || isRenaming}>
+              {isRenaming ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                "Rename"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

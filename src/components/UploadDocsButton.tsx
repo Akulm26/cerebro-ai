@@ -20,34 +20,36 @@ export const UploadDocsButton = ({ userId }: { userId: string }) => {
         throw new Error('Failed to load documentation');
       }
 
-      // Create document record
-      const { data: doc, error: docError } = await supabase
-        .from('documents')
-        .insert({
-          user_id: userId,
-          file_name: 'ARCHITECTURE.md',
-          file_type: 'text/markdown',
-          status: 'processing',
-          folder: 'Documentation',
-          source_type: 'file',
-        })
-        .select()
-        .single();
+      // Convert content to base64
+      const base64Content = btoa(unescape(encodeURIComponent(content)));
 
-      if (docError) throw docError;
-
-      // Process the document
-      const { error: processError } = await supabase.functions.invoke('process-document', {
+      // Call process-document edge function directly without creating document record first
+      // The edge function will create the document record with service role permissions
+      const { data, error: processError } = await supabase.functions.invoke('process-document', {
         body: {
-          documentId: doc.id,
-          content: btoa(unescape(encodeURIComponent(content))),
           fileName: 'ARCHITECTURE.md',
           fileType: 'text/markdown',
+          content: base64Content,
           userId: userId,
         }
       });
 
       if (processError) throw processError;
+
+      // Now call it again with the document ID to process the content
+      if (data?.documentId) {
+        const { error: secondError } = await supabase.functions.invoke('process-document', {
+          body: {
+            documentId: data.documentId,
+            content: base64Content,
+            fileName: 'ARCHITECTURE.md',
+            fileType: 'text/markdown',
+            userId: userId,
+          }
+        });
+
+        if (secondError) throw secondError;
+      }
 
       toast({
         title: "Documentation uploaded",

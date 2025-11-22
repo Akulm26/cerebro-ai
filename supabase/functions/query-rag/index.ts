@@ -58,15 +58,21 @@ serve(async (req) => {
     const embeddingData = await embeddingResponse.json();
     const queryEmbedding = embeddingData.data[0].embedding;
 
-    // Step 2: Hybrid search - get more candidates for reranking
+    // Step 2: Semantic search with lower threshold for better recall
+    console.log(`Searching for chunks with query: "${query}"`);
     const { data: chunks, error: searchError } = await supabase.rpc('search_chunks', {
       query_embedding: queryEmbedding,
-      match_threshold: 0.30,
-      match_count: 10,
+      match_threshold: 0.25,  // Lower threshold for better recall
+      match_count: 15,         // Retrieve more candidates
       filter_user_id: userId,
     });
 
-    if (searchError) throw searchError;
+    if (searchError) {
+      console.error('Search error:', searchError);
+      throw searchError;
+    }
+
+    console.log(`Found ${chunks?.length || 0} chunks`);
 
     if (!chunks || chunks.length === 0) {
       const response = "I don't have any information to answer that question. Could you upload more relevant documents or rephrase your question?";
@@ -87,11 +93,13 @@ serve(async (req) => {
       );
     }
 
-    // Step 3: Rerank and filter
+    // Step 3: Rerank and select top chunks with moderate filtering
     const rerankedChunks = chunks
-      .filter((chunk: any) => chunk.similarity >= 0.35)
+      .filter((chunk: any) => chunk.similarity >= 0.28)  // Lower filter for more context
       .sort((a: any, b: any) => b.similarity - a.similarity)
-      .slice(0, 6);
+      .slice(0, 8);  // Include more chunks for richer context
+
+    console.log(`Using ${rerankedChunks.length} chunks after reranking (similarities: ${rerankedChunks.map((c: any) => c.similarity.toFixed(3)).join(', ')})`);
 
     // Step 4: Build context from top chunks
     const context = rerankedChunks.map((chunk: any, idx: number) => {
@@ -118,6 +126,7 @@ serve(async (req) => {
     });
 
     // Step 5: Generate answer using Lovable AI
+    console.log('Generating AI response...');
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -129,23 +138,32 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `You are Cerebro, a personal knowledge retrieval assistant. Answer questions based STRICTLY AND ONLY on the user's uploaded documents.
+            content: `You are Cerebro, an intelligent knowledge assistant that helps users find information in their documents.
 
-CRITICAL RULES:
-1. ONLY use information from the provided context
-2. NEVER use external knowledge or make assumptions
-3. If the context doesn't contain the answer, say "I don't have that information in your documents"
-4. Be concise but thorough
-5. Cite which folder/document you're referencing when relevant
+RESPONSE GUIDELINES:
+1. Answer directly and comprehensively using information from the provided context
+2. Structure your response with clear paragraphs and bullet points when appropriate
+3. Cite specific documents/folders when referencing information (e.g., "According to Strategy.pdf...")
+4. If the context partially answers the question, provide what you can and note what's missing
+5. Only say you don't have information if the context is completely irrelevant
+6. Use a professional but conversational tone
+7. For complex queries, break down the answer into logical sections
 
-Your answers should be:
-- Grounded in the provided documents
-- Well-structured with clear formatting
-- Include relevant folder/document references`
+IMPORTANT:
+- Be thorough - use all relevant information from the context
+- Make connections between different pieces of information when relevant
+- If asked about multiple topics, address each one systematically`
           },
           {
             role: 'user',
-            content: `Context from your knowledge base:\n\n${context}\n\nQuestion: ${query}\n\nProvide a clear answer based ONLY on the context above.`
+            content: `Based on the following information from the user's knowledge base, please answer the question.
+
+CONTEXT:
+${context}
+
+QUESTION: ${query}
+
+Provide a comprehensive answer based on the context above. If the context doesn't fully answer the question, provide what information is available and note what's missing.`
           }
         ],
       }),
@@ -154,11 +172,12 @@ Your answers should be:
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
       console.error('AI gateway error:', aiResponse.status, errorText);
-      throw new Error('Failed to generate answer');
+      throw new Error(`Failed to generate answer: ${aiResponse.status}`);
     }
 
     const aiData = await aiResponse.json();
     const answer = aiData.choices[0].message.content;
+    console.log(`Generated answer (${answer.length} chars)`);
 
     // Store assistant message
     await supabase

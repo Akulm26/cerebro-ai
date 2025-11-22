@@ -225,7 +225,11 @@ serve(async (req) => {
               metadata: { file_name: fileName, folder: folder },
             }));
 
-            await supabase.from('document_chunks').insert(chunksToInsert);
+            const { error: insertError } = await supabase.from('document_chunks').insert(chunksToInsert);
+            if (insertError) {
+              console.error('Error inserting document chunks:', insertError);
+              throw insertError;
+            }
           }
 
           // Update document status

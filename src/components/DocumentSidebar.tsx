@@ -72,6 +72,27 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
     };
   }, [userId]);
 
+  // Auto-expand all folders on first load
+  useEffect(() => {
+    if (documents.length > 0 && Object.keys(expandedFolders).length === 0) {
+      // Group documents by folder
+      const folderGroups = documents.reduce((acc: Record<string, Document[]>, doc) => {
+        const folder = doc.folder || 'Uncategorized';
+        if (!acc[folder]) {
+          acc[folder] = [];
+        }
+        acc[folder].push(doc);
+        return acc;
+      }, {});
+
+      const initialExpanded: Record<string, boolean> = {};
+      Object.keys(folderGroups).forEach(folder => {
+        initialExpanded[folder] = true;
+      });
+      setExpandedFolders(initialExpanded);
+    }
+  }, [documents, expandedFolders]);
+
   const fetchDocuments = async () => {
     try {
       const { data, error } = await supabase
@@ -169,17 +190,6 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
   const folders: FolderGroup[] = Object.entries(folderGroups)
     .map(([folder, docs]) => ({ folder, documents: docs }))
     .sort((a, b) => a.folder.localeCompare(b.folder));
-
-  // Auto-expand all folders on first load
-  useEffect(() => {
-    if (folders.length > 0 && Object.keys(expandedFolders).length === 0) {
-      const initialExpanded: Record<string, boolean> = {};
-      folders.forEach(f => {
-        initialExpanded[f.folder] = true;
-      });
-      setExpandedFolders(initialExpanded);
-    }
-  }, [folders.length]);
 
   return (
     <aside className="h-full border-r bg-doc-sidebar flex flex-col">

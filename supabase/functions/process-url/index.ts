@@ -16,14 +16,23 @@ serve(async (req) => {
   try {
     const { url, userId } = await req.json();
 
+    // Check for Google Docs URLs
+    if (url.includes('docs.google.com')) {
+      throw new Error('Google Docs URLs are not supported. Please download the document as PDF or DOCX and upload it directly using the file upload feature.');
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const openAIKey = Deno.env.get('OPENAI_API_KEY')!;
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch the URL
-    const response = await fetch(url);
+    // Fetch the URL with a proper user agent
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
     const html = await response.text();
     
     // Parse HTML and extract text
@@ -43,7 +52,20 @@ serve(async (req) => {
     text = text.substring(0, 100000); // Limit to 100k chars
 
     if (text.length < 100) {
-      throw new Error('Could not extract sufficient content from URL');
+      throw new Error('Could not extract sufficient content from URL. The page may require JavaScript or may be behind authentication.');
+    }
+
+    // Check for common error messages that indicate failed extraction
+    const errorIndicators = [
+      'javascript is not enabled',
+      'browser version is no longer supported',
+      'enable javascript',
+      'please enable cookies'
+    ];
+    
+    const lowerText = text.toLowerCase();
+    if (errorIndicators.some(indicator => lowerText.includes(indicator))) {
+      throw new Error('This URL requires JavaScript or authentication. Please download the content and upload it as a file instead.');
     }
 
     // Get existing folders for better classification

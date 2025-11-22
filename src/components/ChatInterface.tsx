@@ -6,6 +6,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
 import { Send, Loader2, Bot, User, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Message {
   id: string;
@@ -178,8 +180,10 @@ export const ChatInterface = ({ userId }: { userId: string }) => {
                   </div>
                 )}
                 <Card className={`p-4 max-w-2xl ${message.role === 'user' ? 'bg-gradient-primary text-white' : ''}`}>
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    {message.content}
+                  <div className={`prose prose-sm max-w-none ${message.role === 'user' ? 'prose-invert' : 'dark:prose-invert'}`}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {message.content}
+                    </ReactMarkdown>
                   </div>
                   {message.sources && message.sources.length > 0 && (() => {
                     // Deduplicate sources by document name, keeping highest relevance

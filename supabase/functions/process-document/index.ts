@@ -51,6 +51,21 @@ serve(async (req) => {
       // Start background processing
       const processInBackground = async () => {
         try {
+          // Fetch document to get userId
+          const { data: document, error: docError } = await supabase
+            .from('documents')
+            .select('user_id, file_name, file_type')
+            .eq('id', documentId)
+            .single();
+
+          if (docError || !document) {
+            throw new Error('Document not found');
+          }
+
+          const actualUserId = document.user_id;
+          const actualFileName = document.file_name;
+          const actualFileType = document.file_type;
+
           // Update status to extracting
           await supabase
             .from('documents')
@@ -63,10 +78,10 @@ serve(async (req) => {
           const buffer = Uint8Array.from(atob(content), c => c.charCodeAt(0));
           let text = '';
           
-          console.log(`Processing document: ${fileName} (${fileType}, ${buffer.length} bytes)`);
+          console.log(`Processing document: ${actualFileName} (${actualFileType}, ${buffer.length} bytes)`);
           
           // Check file type and apply appropriate extraction
-          if (fileType === 'application/pdf') {
+          if (actualFileType === 'application/pdf') {
             console.log('Processing PDF...');
             text = await extractTextFromPDF(buffer);
             
@@ -79,26 +94,26 @@ serve(async (req) => {
             if (text.trim().length === 0) {
               throw new Error('Could not extract text from PDF - file may be empty or corrupted');
             }
-          } else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+          } else if (actualFileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
             console.log('Processing Word document (.docx)...');
             text = await extractTextFromDocx(buffer);
             
             if (text.trim().length === 0) {
               throw new Error('Could not extract text from Word document - file may be empty or corrupted');
             }
-          } else if (fileType.startsWith('image/')) {
+          } else if (actualFileType.startsWith('image/')) {
             console.log('Processing image with AI vision...');
             try {
-              const visionText = await analyzeImageWithVision(buffer, fileName);
+              const visionText = await analyzeImageWithVision(buffer, actualFileName);
               if (visionText) {
                 text = visionText;
               } else {
-                text = `[Image: ${fileName}]\n\nThis image was uploaded but could not be analyzed.`;
+                text = `[Image: ${actualFileName}]\n\nThis image was uploaded but could not be analyzed.`;
               }
             } catch (visionError) {
               console.error('Vision analysis failed:', visionError);
               const errorMsg = visionError instanceof Error ? visionError.message : 'Unknown error';
-              text = `[Image: ${fileName}]\n\nThis image was uploaded but processing encountered an error: ${errorMsg}`;
+              text = `[Image: ${actualFileName}]\n\nThis image was uploaded but processing encountered an error: ${errorMsg}`;
             }
           } else {
             // For other text files, decode as text
@@ -123,7 +138,7 @@ serve(async (req) => {
           const { data: existingDocs } = await supabase
             .from('documents')
             .select('folder')
-            .eq('user_id', userId)
+            .eq('user_id', actualUserId)
             .not('folder', 'is', null);
           
           const existingFolders = existingDocs 
@@ -131,7 +146,7 @@ serve(async (req) => {
             : [];
 
           // Classify document into folder
-          console.log(`[${fileName}] Classifying document topic`);
+          console.log(`[${actualFileName}] Classifying document topic`);
           let folder = 'Uncategorized';
           try {
             const classifyResponse = await fetch(`${supabaseUrl}/functions/v1/classify-topic`, {
@@ -142,7 +157,7 @@ serve(async (req) => {
               },
               body: JSON.stringify({
                 text,
-                fileName,
+                fileName: actualFileName,
                 existingFolders,
               }),
             });
@@ -150,10 +165,10 @@ serve(async (req) => {
             if (classifyResponse.ok) {
               const classifyData = await classifyResponse.json();
               folder = classifyData.folder || 'Uncategorized';
-              console.log(`[${fileName}] Classified as: ${folder}`);
+              console.log(`[${actualFileName}] Classified as: ${folder}`);
             }
           } catch (classifyError) {
-            console.error(`[${fileName}] Classification error:`, classifyError);
+            console.error(`[${actualFileName}] Classification error:`, classifyError);
           }
 
           // Chunk the text with smaller size to avoid token limit (8192 tokens = ~6000 words)
@@ -216,13 +231,13 @@ serve(async (req) => {
             // Insert chunks with embeddings
             const chunksToInsert = batch.map((chunk, idx) => ({
               document_id: documentId,
-              user_id: userId,
+              user_id: actualUserId,
               chunk_text: chunk,
               chunk_index: i + idx,
               token_count: Math.ceil(chunk.length / 4),
               embedding: embeddingData.data[idx].embedding,
               folder: folder,
-              metadata: { file_name: fileName, folder: folder },
+              metadata: { file_name: actualFileName, folder: folder },
             }));
 
             const { error: insertError } = await supabase.from('document_chunks').insert(chunksToInsert);

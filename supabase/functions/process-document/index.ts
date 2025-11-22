@@ -1,7 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import Tesseract from 'https://esm.sh/tesseract.js@5.0.4';
+// Tesseract removed - doesn't work in Deno (Worker not defined)
 
 declare const EdgeRuntime: any;
 
@@ -87,30 +87,18 @@ serve(async (req) => {
               throw new Error('Could not extract text from Word document - file may be empty or corrupted');
             }
           } else if (fileType.startsWith('image/')) {
-            console.log('Processing image with OCR...');
+            console.log('Processing image with AI vision...');
             try {
-              text = await ocrImage(buffer);
-              
-              // If no text found, use AI vision to analyze the image
-              if (text.trim().length < 50) {
-                console.log('Limited OCR text, using AI vision analysis...');
-                const visionText = await analyzeImageWithVision(buffer, fileName);
-                if (visionText) {
-                  text = visionText;
-                } else {
-                  text = `[Image: ${fileName}]\n\nThis image was uploaded but no text content could be extracted.`;
-                }
+              const visionText = await analyzeImageWithVision(buffer, fileName);
+              if (visionText) {
+                text = visionText;
+              } else {
+                text = `[Image: ${fileName}]\n\nThis image was uploaded but could not be analyzed.`;
               }
-            } catch (ocrError) {
-              console.error('OCR processing failed, trying vision analysis:', ocrError);
-              // Try AI vision as fallback
-              try {
-                const visionText = await analyzeImageWithVision(buffer, fileName);
-                text = visionText || `[Image: ${fileName}]\n\nThis image was uploaded but could not be processed.`;
-              } catch (visionError) {
-                console.error('Vision analysis also failed:', visionError);
-                text = `[Image: ${fileName}]\n\nThis image was uploaded but processing encountered errors.`;
-              }
+            } catch (visionError) {
+              console.error('Vision analysis failed:', visionError);
+              const errorMsg = visionError instanceof Error ? visionError.message : 'Unknown error';
+              text = `[Image: ${fileName}]\n\nThis image was uploaded but processing encountered an error: ${errorMsg}`;
             }
           } else {
             // For other text files, decode as text
@@ -299,79 +287,24 @@ serve(async (req) => {
   }
 });
 
-async function ocrImage(buffer: Uint8Array): Promise<string> {
-  try {
-    console.log('Starting OCR on image...');
-    
-    // Simplified OCR approach - convert buffer more carefully
-    const base64 = btoa(
-      buffer.reduce((data, byte) => data + String.fromCharCode(byte), '')
-    );
-    const mimeType = detectImageMimeType(buffer);
-    const dataUrl = `data:${mimeType};base64,${base64}`;
-    
-    // Initialize Tesseract worker with error handling
-    const worker = await Tesseract.createWorker('eng', 1, {
-      errorHandler: (err: Error) => console.error('Tesseract error:', err),
-    });
-    
-    // Perform OCR with timeout protection
-    const result = await Promise.race([
-      worker.recognize(dataUrl),
-      new Promise<null>((_, reject) => 
-        setTimeout(() => reject(new Error('OCR timeout')), 30000)
-      )
-    ]);
-    
-    await worker.terminate();
-    
-    if (result && result.data && result.data.text) {
-      console.log(`OCR extracted ${result.data.text.length} characters`);
-      return result.data.text;
-    }
-    
-    return '';
-  } catch (error) {
-    console.error('Error performing OCR on image:', error);
-    throw error; // Throw so parent can handle gracefully
-  }
-}
+// OCR function removed - Tesseract doesn't work in Deno edge functions
 
 async function ocrScannedPDF(buffer: Uint8Array): Promise<string> {
   try {
-    console.log('Processing scanned PDF with OCR...');
+    console.log('Processing scanned PDF...');
     
-    // Use pdf-parse to extract images/pages
+    // Use pdf-parse to get page count
     const pdfParse = await import('https://esm.sh/pdf-parse@1.1.1');
     const data = await pdfParse.default(buffer);
     
-    // For scanned PDFs, we'll OCR the PDF as images
-    // This is a simplified approach - in production you'd want to extract individual page images
-    let fullText = `[Scanned PDF - ${data.numpages} pages]\n\n`;
+    // Note that OCR isn't available in Deno edge functions
+    const message = `[Scanned PDF - ${data.numpages} pages]\n\nNote: This appears to be a scanned PDF. Text extraction from scanned PDFs is limited. For better results, please upload the original document or a text-based PDF.`;
     
-    // Initialize Tesseract worker once for all pages
-    const worker = await Tesseract.createWorker('eng');
-    
-    // Convert PDF pages to images and OCR them
-    // Note: This is a simplified version. For better results, you'd extract each page as an image
-    const base64 = btoa(String.fromCharCode(...buffer));
-    const dataUrl = `data:application/pdf;base64,${base64}`;
-    
-    try {
-      const { data: { text } } = await worker.recognize(dataUrl);
-      fullText += text;
-    } catch (ocrError) {
-      console.error('OCR failed on PDF:', ocrError);
-      fullText += '[OCR processing failed - PDF may require manual extraction]';
-    }
-    
-    await worker.terminate();
-    
-    console.log(`OCR extracted ${fullText.length} characters from scanned PDF`);
-    return fullText;
+    console.log('Scanned PDF processed with note');
+    return message;
   } catch (error) {
-    console.error('Error performing OCR on scanned PDF:', error);
-    return '[OCR failed - could not process scanned PDF]';
+    console.error('Error processing scanned PDF:', error);
+    return '[Could not process scanned PDF]';
   }
 }
 

@@ -2,6 +2,12 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+interface Source {
+  document_name: string;
+  folder: string;
+  similarity: number;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -40,7 +46,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'text-embedding-3-small',
+        model: 'text-embedding-3-large',
         input: query,
       }),
     });
@@ -52,18 +58,18 @@ serve(async (req) => {
     const embeddingData = await embeddingResponse.json();
     const queryEmbedding = embeddingData.data[0].embedding;
 
-    // Step 2: Search for relevant chunks
+    // Step 2: Hybrid search - get more candidates for reranking
     const { data: chunks, error: searchError } = await supabase.rpc('search_chunks', {
       query_embedding: queryEmbedding,
-      match_threshold: 0.35,
-      match_count: 6,
+      match_threshold: 0.30,
+      match_count: 10,
       filter_user_id: userId,
     });
 
     if (searchError) throw searchError;
 
     if (!chunks || chunks.length === 0) {
-      const response = "I don't have any information to answer that question. Please upload relevant documents first.";
+      const response = "I don't have any information to answer that question. Could you upload more relevant documents or rephrase your question?";
       
       await supabase
         .from('messages')
@@ -81,26 +87,37 @@ serve(async (req) => {
       );
     }
 
-    // Step 3: Build context from chunks
-    const context = chunks.map((chunk: any, idx: number) => 
-      `[Source ${idx + 1}]: ${chunk.chunk_text}`
-    ).join('\n\n');
+    // Step 3: Rerank and filter
+    const rerankedChunks = chunks
+      .filter((chunk: any) => chunk.similarity >= 0.35)
+      .sort((a: any, b: any) => b.similarity - a.similarity)
+      .slice(0, 6);
 
-    // Get document metadata for sources
-    const documentIds = [...new Set(chunks.map((c: any) => c.document_id))];
+    // Step 4: Build context from top chunks
+    const context = rerankedChunks.map((chunk: any, idx: number) => {
+      const metadata = chunk.metadata || {};
+      const docName = metadata.file_name || 'Unknown';
+      const folder = metadata.folder || chunk.folder || 'Uncategorized';
+      return `[Source ${idx + 1}] (From: ${folder} / ${docName})\n${chunk.chunk_text}`;
+    }).join('\n\n');
+
+    // Get unique documents for sources
+    const documentIds = [...new Set(rerankedChunks.map((c: any) => c.document_id))];
     const { data: documents } = await supabase
       .from('documents')
-      .select('id, file_name')
+      .select('id, file_name, folder')
       .in('id', documentIds);
 
-    const sources = chunks.map((chunk: any) => ({
-      document_id: chunk.document_id,
-      chunk_index: chunk.chunk_index,
-      file_name: documents?.find(d => d.id === chunk.document_id)?.file_name || 'Unknown',
-      similarity: chunk.similarity,
-    }));
+    const sources: Source[] = rerankedChunks.map((chunk: any) => {
+      const doc = documents?.find(d => d.id === chunk.document_id);
+      return {
+        document_name: doc?.file_name || 'Unknown',
+        folder: doc?.folder || chunk.metadata?.folder || 'Uncategorized',
+        similarity: chunk.similarity,
+      };
+    });
 
-    // Step 4: Generate answer using Lovable AI
+    // Step 5: Generate answer using Lovable AI
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -112,23 +129,23 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `You are Cerebro, a precise knowledge retrieval assistant. Your role is to answer questions based ONLY on the provided context.
+            content: `You are Cerebro, a personal knowledge retrieval assistant. Answer questions based STRICTLY AND ONLY on the user's uploaded documents.
 
 CRITICAL RULES:
-1. Only use information from the provided context
-2. If the context doesn't contain enough information, say "I don't have sufficient information to answer that question"
-3. Always be accurate and never hallucinate
-4. Cite specific sources when possible
-5. If asked about something outside the context, politely decline and ask the user to upload relevant documents
+1. ONLY use information from the provided context
+2. NEVER use external knowledge or make assumptions
+3. If the context doesn't contain the answer, say "I don't have that information in your documents"
+4. Be concise but thorough
+5. Cite which folder/document you're referencing when relevant
 
-Answer Format:
-- Start with a concise 2-3 sentence answer
-- Follow with detailed information organized with bullet points
-- Be clear, analytical, and neutral`
+Your answers should be:
+- Grounded in the provided documents
+- Well-structured with clear formatting
+- Include relevant folder/document references`
           },
           {
             role: 'user',
-            content: `Context from documents:\n\n${context}\n\nQuestion: ${query}`
+            content: `Context from your knowledge base:\n\n${context}\n\nQuestion: ${query}\n\nProvide a clear answer based ONLY on the context above.`
           }
         ],
       }),

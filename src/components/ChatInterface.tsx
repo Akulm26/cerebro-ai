@@ -11,7 +11,11 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  sources?: any[];
+  sources?: Array<{
+    document_name: string;
+    folder: string;
+    similarity: number;
+  }>;
   created_at: string;
 }
 
@@ -77,7 +81,14 @@ export const ChatInterface = ({ userId }: { userId: string }) => {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      setMessages((data || []) as Message[]);
+      
+      // Transform the data to match our Message interface
+      const transformedMessages = (data || []).map(msg => ({
+        ...msg,
+        sources: msg.sources as any[] || [],
+      })) as Message[];
+      
+      setMessages(transformedMessages);
     } catch (error: any) {
       console.error('Error loading messages:', error);
     }
@@ -174,12 +185,12 @@ export const ChatInterface = ({ userId }: { userId: string }) => {
                     <div className="mt-3 pt-3 border-t border-border/50">
                       <p className="text-xs font-semibold mb-2 flex items-center gap-1">
                         <FileText className="w-3 h-3" />
-                        Sources:
+                        📚 Sources from your knowledge base:
                       </p>
                       <div className="space-y-1">
                         {message.sources.map((source: any, idx: number) => (
-                          <p key={idx} className="text-xs text-muted-foreground truncate">
-                            • {source.file_name} (chunk {source.chunk_index})
+                          <p key={idx} className="text-xs text-muted-foreground">
+                            • {source.folder} / {source.document_name} ({(source.similarity * 100).toFixed(0)}% relevance)
                           </p>
                         ))}
                       </div>

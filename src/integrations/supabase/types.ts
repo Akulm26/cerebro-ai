@@ -53,6 +53,7 @@ export type Database = {
           created_at: string
           document_id: string
           embedding: string | null
+          folder: string | null
           id: string
           metadata: Json | null
           token_count: number | null
@@ -64,6 +65,7 @@ export type Database = {
           created_at?: string
           document_id: string
           embedding?: string | null
+          folder?: string | null
           id?: string
           metadata?: Json | null
           token_count?: number | null
@@ -75,6 +77,7 @@ export type Database = {
           created_at?: string
           document_id?: string
           embedding?: string | null
+          folder?: string | null
           id?: string
           metadata?: Json | null
           token_count?: number | null
@@ -106,8 +109,10 @@ export type Database = {
           file_name: string
           file_size: number | null
           file_type: string
+          folder: string | null
           id: string
           metadata: Json | null
+          source_type: string | null
           status: string
           text_length: number | null
           upload_date: string
@@ -121,8 +126,10 @@ export type Database = {
           file_name: string
           file_size?: number | null
           file_type: string
+          folder?: string | null
           id?: string
           metadata?: Json | null
+          source_type?: string | null
           status?: string
           text_length?: number | null
           upload_date?: string
@@ -136,8 +143,10 @@ export type Database = {
           file_name?: string
           file_size?: number | null
           file_type?: string
+          folder?: string | null
           id?: string
           metadata?: Json | null
+          source_type?: string | null
           status?: string
           text_length?: number | null
           upload_date?: string

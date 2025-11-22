@@ -87,6 +87,31 @@ serve(async (req) => {
           // Limit text length
           text = text.substring(0, 100000);
 
+          // Classify document into folder
+          console.log(`[${fileName}] Classifying document topic`);
+          let folder = 'Uncategorized';
+          try {
+            const classifyResponse = await fetch(`${supabaseUrl}/functions/v1/classify-topic`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                text,
+                fileName,
+              }),
+            });
+            
+            if (classifyResponse.ok) {
+              const classifyData = await classifyResponse.json();
+              folder = classifyData.folder || 'Uncategorized';
+              console.log(`[${fileName}] Classified as: ${folder}`);
+            }
+          } catch (classifyError) {
+            console.error(`[${fileName}] Classification error:`, classifyError);
+          }
+
           // Chunk the text
           const chunks = chunkText(text, 350, 80);
 
@@ -103,7 +128,7 @@ serve(async (req) => {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                model: 'text-embedding-3-small',
+                model: 'text-embedding-3-large',
                 input: batch,
               }),
             });
@@ -131,20 +156,22 @@ serve(async (req) => {
               chunk_index: i + idx,
               token_count: Math.ceil(chunk.length / 4),
               embedding: embeddingData.data[idx].embedding,
-              metadata: { file_name: fileName },
+              folder: folder,
+              metadata: { file_name: fileName, folder: folder },
             }));
 
             await supabase.from('document_chunks').insert(chunksToInsert);
           }
 
           // Update document status
-          console.log(`Successfully processed document: ${chunks.length} chunks created`);
+          console.log(`Successfully processed document: ${chunks.length} chunks created in folder: ${folder}`);
           await supabase
             .from('documents')
             .update({
               status: 'ready',
               chunk_count: chunks.length,
               text_length: text.length,
+              folder: folder,
               error_message: null,
             })
             .eq('id', documentId);

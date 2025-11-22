@@ -26,7 +26,7 @@ export const UploadDialog = ({ open, onOpenChange, userId }: UploadDialogProps) 
     setIsUploading(true);
 
     try {
-      for (const file of Array.from(files)) {
+      const uploadPromises = Array.from(files).map(async (file) => {
         const { data, error } = await supabase.functions.invoke('process-document', {
           body: {
             fileName: file.name,
@@ -37,36 +37,35 @@ export const UploadDialog = ({ open, onOpenChange, userId }: UploadDialogProps) 
         });
 
         if (error) throw error;
-
-        if (data.error) {
-          throw new Error(data.error);
-        }
+        if (data.error) throw new Error(data.error);
 
         const documentId = data.documentId;
 
+        // Process file content asynchronously without blocking
         const fileReader = new FileReader();
         fileReader.onload = async (event) => {
           const base64 = event.target?.result?.toString().split(',')[1];
           
-          const { error: processError } = await supabase.functions.invoke('process-document', {
+          // Fire and forget - let it process in background
+          supabase.functions.invoke('process-document', {
             body: {
               documentId,
               content: base64,
             },
-          });
-
-          if (processError) throw processError;
+          }).catch(console.error);
         };
         fileReader.readAsDataURL(file);
-      }
+      });
+
+      await Promise.all(uploadPromises);
 
       toast({
         title: "Upload started",
-        description: "Your documents are being processed",
+        description: "Your documents are being processed in the background",
       });
 
-      onOpenChange(false);
       e.target.value = '';
+      onOpenChange(false);
     } catch (error: any) {
       toast({
         title: "Upload failed",

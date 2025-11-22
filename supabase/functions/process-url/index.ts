@@ -67,10 +67,12 @@ serve(async (req) => {
     // Chunk the text
     const chunks = chunkText(text, 350, 80);
 
-    // Generate embeddings for each chunk
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
+    // Batch embeddings for better performance
+    const batchSize = 10;
+    for (let i = 0; i < chunks.length; i += batchSize) {
+      const batch = chunks.slice(i, i + batchSize);
       
+      // Generate embeddings for batch
       const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
         method: 'POST',
         headers: {
@@ -79,7 +81,7 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           model: 'text-embedding-3-small',
-          input: chunk,
+          input: batch,
         }),
       });
 
@@ -90,19 +92,19 @@ serve(async (req) => {
       }
 
       const embeddingData = await embeddingResponse.json();
-      const embedding = embeddingData.data[0].embedding;
+      
+      // Insert chunks with embeddings
+      const chunksToInsert = batch.map((chunk, idx) => ({
+        document_id: doc_record.id,
+        user_id: userId,
+        chunk_text: chunk,
+        chunk_index: i + idx,
+        token_count: Math.ceil(chunk.length / 4),
+        embedding: embeddingData.data[idx].embedding,
+        metadata: { file_name: fileName, source_url: url },
+      }));
 
-      await supabase
-        .from('document_chunks')
-        .insert({
-          document_id: doc_record.id,
-          user_id: userId,
-          chunk_text: chunk,
-          chunk_index: i,
-          token_count: Math.ceil(chunk.length / 4),
-          embedding: embedding,
-          metadata: { file_name: fileName, source_url: url },
-        });
+      await supabase.from('document_chunks').insert(chunksToInsert);
     }
 
     // Update document status

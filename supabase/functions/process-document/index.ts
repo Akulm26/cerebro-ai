@@ -2,6 +2,8 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+declare const EdgeRuntime: any;
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -45,65 +47,85 @@ serve(async (req) => {
 
     // Stage 2: Process document content
     if (documentId && content) {
-      const buffer = Uint8Array.from(atob(content), c => c.charCodeAt(0));
-      let text = new TextDecoder().decode(buffer);
+      // Start background processing
+      const processInBackground = async () => {
+        try {
+          const buffer = Uint8Array.from(atob(content), c => c.charCodeAt(0));
+          let text = new TextDecoder().decode(buffer);
 
-      // Simple text extraction (for MVP - can be enhanced with proper parsers)
-      text = text.substring(0, 100000); // Limit to 100k chars for MVP
+          // Simple text extraction (for MVP - can be enhanced with proper parsers)
+          text = text.substring(0, 100000); // Limit to 100k chars for MVP
 
-      // Chunk the text
-      const chunks = chunkText(text, 350, 80);
+          // Chunk the text
+          const chunks = chunkText(text, 350, 80);
 
-      // Generate embeddings for each chunk
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        
-        const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openAIKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'text-embedding-3-small',
-            input: chunk,
-          }),
-        });
+          // Batch embeddings for better performance
+          const batchSize = 10;
+          for (let i = 0; i < chunks.length; i += batchSize) {
+            const batch = chunks.slice(i, i + batchSize);
+            
+            // Generate embeddings for batch
+            const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${openAIKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'text-embedding-3-small',
+                input: batch,
+              }),
+            });
 
-        if (!embeddingResponse.ok) {
-          const errorData = await embeddingResponse.text();
-          console.error('OpenAI API Error:', embeddingResponse.status, errorData);
-          throw new Error(`Failed to generate embedding: ${embeddingResponse.status} - ${errorData}`);
+            if (!embeddingResponse.ok) {
+              const errorData = await embeddingResponse.text();
+              console.error('OpenAI API Error:', embeddingResponse.status, errorData);
+              throw new Error(`Failed to generate embedding: ${embeddingResponse.status} - ${errorData}`);
+            }
+
+            const embeddingData = await embeddingResponse.json();
+            
+            // Insert chunks with embeddings
+            const chunksToInsert = batch.map((chunk, idx) => ({
+              document_id: documentId,
+              user_id: userId,
+              chunk_text: chunk,
+              chunk_index: i + idx,
+              token_count: Math.ceil(chunk.length / 4),
+              embedding: embeddingData.data[idx].embedding,
+              metadata: { file_name: fileName },
+            }));
+
+            await supabase.from('document_chunks').insert(chunksToInsert);
+          }
+
+          // Update document status
+          await supabase
+            .from('documents')
+            .update({
+              status: 'ready',
+              chunk_count: chunks.length,
+              text_length: text.length,
+            })
+            .eq('id', documentId);
+
+        } catch (error) {
+          console.error('Background processing error:', error);
+          await supabase
+            .from('documents')
+            .update({
+              status: 'error',
+              error_message: (error as Error).message,
+            })
+            .eq('id', documentId);
         }
+      };
 
-        const embeddingData = await embeddingResponse.json();
-        const embedding = embeddingData.data[0].embedding;
-
-        await supabase
-          .from('document_chunks')
-          .insert({
-            document_id: documentId,
-            user_id: userId,
-            chunk_text: chunk,
-            chunk_index: i,
-            token_count: Math.ceil(chunk.length / 4),
-            embedding: embedding,
-            metadata: { file_name: fileName },
-          });
-      }
-
-      // Update document status
-      await supabase
-        .from('documents')
-        .update({
-          status: 'ready',
-          chunk_count: chunks.length,
-          text_length: text.length,
-        })
-        .eq('id', documentId);
+      // Start background task
+      EdgeRuntime.waitUntil(processInBackground());
 
       return new Response(
-        JSON.stringify({ success: true, chunks: chunks.length }),
+        JSON.stringify({ success: true, message: 'Processing started' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

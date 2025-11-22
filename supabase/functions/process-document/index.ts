@@ -54,6 +54,8 @@ serve(async (req) => {
           const buffer = Uint8Array.from(atob(content), c => c.charCodeAt(0));
           let text = '';
           
+          console.log(`Processing document: ${fileName} (${fileType}, ${buffer.length} bytes)`);
+          
           // Check file type and apply appropriate extraction
           if (fileType === 'application/pdf') {
             console.log('Processing PDF...');
@@ -64,13 +66,23 @@ serve(async (req) => {
               console.log('PDF appears to be scanned, attempting OCR...');
               text = await ocrScannedPDF(buffer);
             }
+            
+            if (text.trim().length === 0) {
+              throw new Error('Could not extract text from PDF - file may be empty or corrupted');
+            }
           } else if (fileType.startsWith('image/')) {
             console.log('Processing image with OCR...');
             text = await ocrImage(buffer);
+            
+            if (text.trim().length === 0) {
+              throw new Error('Could not extract text from image - OCR found no text');
+            }
           } else {
             // For non-PDF, non-image files, decode as text
             text = new TextDecoder().decode(buffer);
           }
+          
+          console.log(`Extracted ${text.length} characters`);
 
           // Limit text length
           text = text.substring(0, 100000);
@@ -99,7 +111,14 @@ serve(async (req) => {
             if (!embeddingResponse.ok) {
               const errorData = await embeddingResponse.text();
               console.error('OpenAI API Error:', embeddingResponse.status, errorData);
-              throw new Error(`Failed to generate embedding: ${embeddingResponse.status} - ${errorData}`);
+              
+              if (embeddingResponse.status === 401) {
+                throw new Error('OpenAI API key is invalid or missing');
+              } else if (embeddingResponse.status === 429) {
+                throw new Error('OpenAI API rate limit exceeded - please try again later');
+              } else {
+                throw new Error(`Failed to generate embeddings: ${embeddingResponse.status}`);
+              }
             }
 
             const embeddingData = await embeddingResponse.json();
@@ -119,22 +138,34 @@ serve(async (req) => {
           }
 
           // Update document status
+          console.log(`Successfully processed document: ${chunks.length} chunks created`);
           await supabase
             .from('documents')
             .update({
               status: 'ready',
               chunk_count: chunks.length,
               text_length: text.length,
+              error_message: null,
             })
             .eq('id', documentId);
 
         } catch (error) {
           console.error('Background processing error:', error);
+          
+          // Provide user-friendly error messages
+          let errorMessage = (error as Error).message;
+          
+          if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+            errorMessage = 'Network error - check your connection and try again';
+          } else if (errorMessage.includes('timeout')) {
+            errorMessage = 'Processing timeout - file may be too large';
+          }
+          
           await supabase
             .from('documents')
             .update({
               status: 'error',
-              error_message: (error as Error).message,
+              error_message: errorMessage,
             })
             .eq('id', documentId);
         }

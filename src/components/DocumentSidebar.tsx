@@ -176,28 +176,30 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                         </AlertDescription>
                       </Alert>
                     )}
-                  </div>
-                  <div className="flex gap-1 flex-shrink-0">
-                    {doc.status === 'error' && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {doc.status === 'error' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                          onClick={() => handleRetry(doc.id)}
+                          title="Retry processing"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span className="text-xs">Retry</span>
+                        </Button>
+                      )}
                       <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                        onClick={() => handleRetry(doc.id)}
-                        title="Retry processing"
+                        variant="outline"
+                        size="sm"
+                        className="gap-1 text-destructive border-destructive/40 hover:bg-destructive/10"
+                        onClick={() => handleDelete(doc.id)}
+                        title="Delete document"
                       >
-                        <RefreshCw className="w-4 h-4" />
+                        <Trash2 className="w-3 h-3" />
+                        <span className="text-xs">Delete</span>
                       </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => handleDelete(doc.id)}
-                      title="Delete document"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    </div>
                   </div>
                 </div>
               </Card>

@@ -116,6 +116,8 @@ export type Database = {
           id: string
           metadata: Json | null
           parent_folder: string | null
+          processing_progress: number | null
+          processing_stage: string | null
           source_type: string | null
           status: string
           text_length: number | null
@@ -134,6 +136,8 @@ export type Database = {
           id?: string
           metadata?: Json | null
           parent_folder?: string | null
+          processing_progress?: number | null
+          processing_stage?: string | null
           source_type?: string | null
           status?: string
           text_length?: number | null
@@ -152,6 +156,8 @@ export type Database = {
           id?: string
           metadata?: Json | null
           parent_folder?: string | null
+          processing_progress?: number | null
+          processing_stage?: string | null
           source_type?: string | null
           status?: string
           text_length?: number | null

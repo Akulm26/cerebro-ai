@@ -51,6 +51,15 @@ serve(async (req) => {
       // Start background processing
       const processInBackground = async () => {
         try {
+          // Update status to extracting
+          await supabase
+            .from('documents')
+            .update({ 
+              processing_progress: 10, 
+              processing_stage: 'extracting' 
+            })
+            .eq('id', documentId);
+
           const buffer = Uint8Array.from(atob(content), c => c.charCodeAt(0));
           let text = '';
           
@@ -83,6 +92,15 @@ serve(async (req) => {
           }
           
           console.log(`Extracted ${text.length} characters`);
+
+          // Update progress - text extraction complete
+          await supabase
+            .from('documents')
+            .update({ 
+              processing_progress: 33, 
+              processing_stage: 'chunking' 
+            })
+            .eq('id', documentId);
 
           // Limit text length
           text = text.substring(0, 100000);
@@ -127,10 +145,28 @@ serve(async (req) => {
           // Chunk the text with smaller size to avoid token limit (8192 tokens = ~6000 words)
           const chunks = chunkText(text, 200, 50);
 
+          // Update progress - chunking complete, starting embeddings
+          await supabase
+            .from('documents')
+            .update({ 
+              processing_progress: 50, 
+              processing_stage: 'embedding' 
+            })
+            .eq('id', documentId);
+
           // Batch embeddings for better performance (smaller batches to avoid token limits)
           const batchSize = 5;
           for (let i = 0; i < chunks.length; i += batchSize) {
             const batch = chunks.slice(i, i + batchSize);
+            
+            // Update progress during embedding generation
+            const embeddingProgress = 50 + Math.floor((i / chunks.length) * 45);
+            await supabase
+              .from('documents')
+              .update({ 
+                processing_progress: embeddingProgress 
+              })
+              .eq('id', documentId);
             
             // Generate embeddings for batch
             const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
@@ -186,6 +222,8 @@ serve(async (req) => {
               text_length: text.length,
               folder: folder,
               error_message: null,
+              processing_progress: 100,
+              processing_stage: 'complete',
             })
             .eq('id', documentId);
 

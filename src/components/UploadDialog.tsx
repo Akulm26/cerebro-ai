@@ -12,9 +12,10 @@ interface UploadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   userId: string;
+  onUploadComplete?: () => void;
 }
 
-export const UploadDialog = ({ open, onOpenChange, userId }: UploadDialogProps) => {
+export const UploadDialog = ({ open, onOpenChange, userId, onUploadComplete }: UploadDialogProps) => {
   const [isUploading, setIsUploading] = useState(false);
   const [url, setUrl] = useState("");
   const { toast } = useToast();
@@ -65,6 +66,7 @@ export const UploadDialog = ({ open, onOpenChange, userId }: UploadDialogProps) 
       });
 
       e.target.value = '';
+      onUploadComplete?.();
       onOpenChange(false);
     } catch (error: any) {
       toast({
@@ -102,6 +104,7 @@ export const UploadDialog = ({ open, onOpenChange, userId }: UploadDialogProps) 
       });
 
       setUrl("");
+      onUploadComplete?.();
       onOpenChange(false);
     } catch (error: any) {
       toast({

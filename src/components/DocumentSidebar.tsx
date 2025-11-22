@@ -51,6 +51,7 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
   const [showMasterDialog, setShowMasterDialog] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [draggedDoc, setDraggedDoc] = useState<Document | null>(null);
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
   const [emptyFolders, setEmptyFolders] = useState<string[]>(() => {
     // Load empty folders from localStorage on mount
     const stored = localStorage.getItem(`emptyFolders_${userId}`);
@@ -139,13 +140,20 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent, folderName: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    setDragOverFolder(folderName);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverFolder(null);
   };
 
   const handleDrop = async (e: React.DragEvent, targetFolder: string) => {
     e.preventDefault();
+    setDragOverFolder(null);
     if (!draggedDoc) return;
 
     const normalizedTargetFolder = targetFolder === 'Uncategorized' ? null : targetFolder;
@@ -545,8 +553,11 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                         className="space-y-2"
                       >
                         <div 
-                          className="flex items-center gap-1 w-full group"
-                          onDragOver={handleDragOver}
+                          className={`flex items-center gap-1 w-full group transition-colors rounded-md ${
+                            dragOverFolder === folderGroup.folder ? 'bg-primary/10 ring-2 ring-primary' : ''
+                          }`}
+                          onDragOver={(e) => handleDragOver(e, folderGroup.folder)}
+                          onDragLeave={handleDragLeave}
                           onDrop={(e) => handleDrop(e, folderGroup.folder)}
                         >
                           <CollapsibleTrigger className="flex items-center gap-2 flex-1 hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors">
@@ -575,12 +586,14 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                         </div>
                         <CollapsibleContent className="space-y-2 pl-2">
                           {folderGroup.documents.map((doc) => (
-                            <Card 
-                              key={doc.id} 
-                              className="p-3 hover:shadow-soft transition-shadow cursor-move"
-                              draggable
-                              onDragStart={(e) => handleDragStart(e, doc)}
-                            >
+                        <Card 
+                          key={doc.id} 
+                          className={`p-3 hover:shadow-soft transition-all cursor-move ${
+                            draggedDoc?.id === doc.id ? 'opacity-50 scale-95' : ''
+                          }`}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, doc)}
+                        >
                               <div className="flex items-start gap-3">
                                 {getDocumentIcon(doc)}
                                 <div className="flex-1 min-w-0">
@@ -654,8 +667,11 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                   className="space-y-2"
                 >
                   <div 
-                    className="flex items-center gap-1 w-full group"
-                    onDragOver={handleDragOver}
+                    className={`flex items-center gap-1 w-full group transition-colors rounded-md ${
+                      dragOverFolder === folderGroup.folder ? 'bg-primary/10 ring-2 ring-primary' : ''
+                    }`}
+                    onDragOver={(e) => handleDragOver(e, folderGroup.folder)}
+                    onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, folderGroup.folder)}
                   >
                     <CollapsibleTrigger className="flex items-center gap-2 flex-1 hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors">
@@ -684,12 +700,14 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                   </div>
                   <CollapsibleContent className="space-y-2 pl-2">
                     {folderGroup.documents.map((doc) => (
-                      <Card 
-                        key={doc.id} 
-                        className="p-3 hover:shadow-soft transition-shadow cursor-move"
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, doc)}
-                      >
+                    <Card 
+                      key={doc.id} 
+                      className={`p-3 hover:shadow-soft transition-all cursor-move ${
+                        draggedDoc?.id === doc.id ? 'opacity-50 scale-95' : ''
+                      }`}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, doc)}
+                    >
                         <div className="flex items-start gap-3">
                           {getDocumentIcon(doc)}
                           <div className="flex-1 min-w-0">
@@ -760,8 +778,11 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                   className="space-y-2"
                 >
                   <div 
-                    className="flex items-center gap-1 w-full group"
-                    onDragOver={handleDragOver}
+                    className={`flex items-center gap-1 w-full group transition-colors rounded-md ${
+                      dragOverFolder === folderName ? 'bg-primary/10 ring-2 ring-primary' : ''
+                    }`}
+                    onDragOver={(e) => handleDragOver(e, folderName)}
+                    onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, folderName)}
                   >
                     <CollapsibleTrigger className="flex items-center gap-2 flex-1 hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors">

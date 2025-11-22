@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { MergeFoldersDialog } from "./MergeFoldersDialog";
 import { CreateMasterFolderDialog } from "./CreateMasterFolderDialog";
 import { CreateFolderDialog } from "./CreateFolderDialog";
+import { UploadDocsButton } from "./UploadDocsButton";
 
 interface Document {
   id: string;
@@ -506,6 +507,7 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
             <Merge className="w-3 h-3 mr-1" />
             Merge Folders
           </Button>
+          <UploadDocsButton userId={userId} />
         </div>
       </div>
       <ScrollArea className="flex-1 p-4">

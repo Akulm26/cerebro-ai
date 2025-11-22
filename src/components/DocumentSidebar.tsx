@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
-import { FileText, Loader2, Trash2 } from "lucide-react";
+import { FileText, Loader2, Trash2, AlertCircle, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Document {
   id: string;
@@ -13,6 +14,7 @@ interface Document {
   status: string;
   upload_date: string;
   chunk_count: number;
+  error_message: string | null;
 }
 
 export const DocumentSidebar = ({ userId }: { userId: string }) => {
@@ -94,6 +96,28 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
     }
   };
 
+  const handleRetry = async (docId: string) => {
+    try {
+      const { error } = await supabase
+        .from('documents')
+        .update({ status: 'processing', error_message: null })
+        .eq('id', docId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Retrying document",
+        description: "Document processing has been restarted",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error retrying document",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   if (loading) {
     return (
       <aside className="w-80 border-r bg-doc-sidebar p-4 flex items-center justify-center">
@@ -139,19 +163,42 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                         </span>
                       )}
                       {doc.status === 'error' && (
-                        <span className="text-xs text-destructive">Error</span>
+                        <span className="text-xs text-destructive flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          Failed
+                        </span>
                       )}
                     </div>
+                    {doc.status === 'error' && doc.error_message && (
+                      <Alert className="mt-2 py-2 px-3">
+                        <AlertDescription className="text-xs">
+                          {doc.error_message}
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
-                    onClick={() => handleDelete(doc.id)}
-                    title="Delete document"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <div className="flex gap-1 flex-shrink-0">
+                    {doc.status === 'error' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                        onClick={() => handleRetry(doc.id)}
+                        title="Retry processing"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => handleDelete(doc.id)}
+                      title="Delete document"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               </Card>
             ))

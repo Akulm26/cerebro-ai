@@ -71,7 +71,9 @@ serve(async (req) => {
         });
 
         if (!embeddingResponse.ok) {
-          throw new Error('Failed to generate embedding');
+          const errorData = await embeddingResponse.text();
+          console.error('OpenAI API Error:', embeddingResponse.status, errorData);
+          throw new Error(`Failed to generate embedding: ${embeddingResponse.status} - ${errorData}`);
         }
 
         const embeddingData = await embeddingResponse.json();

@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { text, fileName } = await req.json();
+    const { text, fileName, existingFolders } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     if (!LOVABLE_API_KEY) {
@@ -20,6 +20,16 @@ serve(async (req) => {
 
     // Use first 2000 characters for classification
     const textSample = text.substring(0, 2000);
+
+    // Build system prompt with existing folders
+    let systemPrompt = 'You are a document classifier. Analyze the document and assign it to ONE folder category. Return ONLY the folder name, nothing else.';
+    
+    if (existingFolders && existingFolders.length > 0) {
+      systemPrompt += `\n\nIMPORTANT: The user already has these folders - PREFER matching to one of these if relevant:\n${existingFolders.join(', ')}`;
+      systemPrompt += '\n\nOnly create a new folder name if the document clearly does not fit any existing folder.';
+    } else {
+      systemPrompt += ' Common categories: Work Notes, Research, AI & ML, Product Management, User Research, Engineering, Design, Marketing, Sales, Finance, Legal, HR, Personal, Meeting Notes, Projects, Ideas, Learning, Reference, Documentation, Reports, Strategy, Planning, Templates, OS, Misc.';
+    }
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -32,7 +42,7 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: 'You are a document classifier. Analyze the document and assign it to ONE folder category. Return ONLY the folder name, nothing else. Common categories: Work Notes, Research, AI & ML, Product Management, User Research, Engineering, Design, Marketing, Sales, Finance, Legal, HR, Personal, Meeting Notes, Projects, Ideas, Learning, Reference, Documentation, Reports, Strategy, Planning, Templates, Misc.'
+            content: systemPrompt
           },
           {
             role: 'user',

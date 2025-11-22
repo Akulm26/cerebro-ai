@@ -61,6 +61,53 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
     localStorage.setItem(`emptyFolders_${userId}`, JSON.stringify(emptyFolders));
   }, [emptyFolders, userId]);
 
+  // Fetch documents and setup realtime subscription
+  useEffect(() => {
+    fetchDocuments();
+
+    const channel = supabase
+      .channel('documents')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'documents',
+        filter: `user_id=eq.${userId}`
+      }, () => {
+        fetchDocuments();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
+  // Auto-expand all folders on first load
+  useEffect(() => {
+    if (documents.length > 0 && Object.keys(expandedFolders).length === 0) {
+      const folderGroups = documents.reduce((acc: Record<string, Document[]>, doc) => {
+        const folder = doc.folder || 'Uncategorized';
+        if (!acc[folder]) {
+          acc[folder] = [];
+        }
+        acc[folder].push(doc);
+        return acc;
+      }, {});
+
+      const initialExpanded: Record<string, boolean> = {};
+      Object.keys(folderGroups).forEach(folder => {
+        initialExpanded[folder] = true;
+      });
+      setExpandedFolders(initialExpanded);
+    }
+  }, [documents, expandedFolders]);
+
+  // Remove empty folders that now have documents
+  useEffect(() => {
+    const foldersWithDocs = new Set(documents.map(d => d.folder || 'Uncategorized'));
+    setEmptyFolders(prev => prev.filter(f => !foldersWithDocs.has(f)));
+  }, [documents]);
+
   const getDocumentIcon = (doc: Document) => {
     if (doc.file_type === 'url' || doc.file_name.startsWith('http')) {
       return <LinkIcon className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />;
@@ -215,45 +262,6 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
     setNewFolderName(folderName);
   };
 
-  useEffect(() => {
-    fetchDocuments();
-
-    const channel = supabase
-      .channel('documents')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'documents',
-        filter: `user_id=eq.${userId}`
-      }, () => {
-        fetchDocuments();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [userId]);
-
-  useEffect(() => {
-    if (documents.length > 0 && Object.keys(expandedFolders).length === 0) {
-      const folderGroups = documents.reduce((acc: Record<string, Document[]>, doc) => {
-        const folder = doc.folder || 'Uncategorized';
-        if (!acc[folder]) {
-          acc[folder] = [];
-        }
-        acc[folder].push(doc);
-        return acc;
-      }, {});
-
-      const initialExpanded: Record<string, boolean> = {};
-      Object.keys(folderGroups).forEach(folder => {
-        initialExpanded[folder] = true;
-      });
-      setExpandedFolders(initialExpanded);
-    }
-  }, [documents, expandedFolders]);
-
   const fetchDocuments = async () => {
     try {
       const { data, error } = await supabase
@@ -389,12 +397,6 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
       description: `"${folderName}" has been removed`,
     });
   };
-
-  // Remove empty folders that now have documents
-  useEffect(() => {
-    const foldersWithDocs = new Set(documents.map(d => d.folder || 'Uncategorized'));
-    setEmptyFolders(prev => prev.filter(f => !foldersWithDocs.has(f)));
-  }, [documents]);
 
   return (
     <aside className="h-full border-r bg-doc-sidebar flex flex-col">

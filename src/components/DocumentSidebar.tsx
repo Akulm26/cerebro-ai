@@ -2,11 +2,14 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
-import { FileText, Loader2, Trash2, AlertCircle, RefreshCw, Link as LinkIcon, Image, FileType, ChevronDown, ChevronRight, Folder } from "lucide-react";
+import { FileText, Loader2, Trash2, AlertCircle, RefreshCw, Link as LinkIcon, Image, FileType, ChevronDown, ChevronRight, Folder, Edit2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface Document {
   id: string;
@@ -28,6 +31,8 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+  const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState("");
   const { toast } = useToast();
 
   const getDocumentIcon = (doc: Document) => {
@@ -50,6 +55,58 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
       ...prev,
       [folderName]: !prev[folderName]
     }));
+  };
+
+  const handleRenameFolder = async () => {
+    if (!renamingFolder || !newFolderName.trim()) return;
+
+    try {
+      // Update all documents in this folder
+      const { error: docsError } = await supabase
+        .from('documents')
+        .update({ folder: newFolderName.trim() })
+        .eq('user_id', userId)
+        .eq('folder', renamingFolder);
+
+      if (docsError) throw docsError;
+
+      // Update all document chunks in this folder
+      const { error: chunksError } = await supabase
+        .from('document_chunks')
+        .update({ folder: newFolderName.trim() })
+        .eq('user_id', userId)
+        .eq('folder', renamingFolder);
+
+      if (chunksError) throw chunksError;
+
+      // Update local state
+      setDocuments(prev => 
+        prev.map(doc => 
+          doc.folder === renamingFolder 
+            ? { ...doc, folder: newFolderName.trim() }
+            : doc
+        )
+      );
+
+      toast({
+        title: "Folder renamed",
+        description: `Folder renamed to "${newFolderName.trim()}"`,
+      });
+
+      setRenamingFolder(null);
+      setNewFolderName("");
+    } catch (error: any) {
+      toast({
+        title: "Error renaming folder",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const startRenaming = (folderName: string) => {
+    setRenamingFolder(folderName);
+    setNewFolderName(folderName);
   };
 
   useEffect(() => {
@@ -217,17 +274,31 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                 onOpenChange={() => toggleFolder(folderGroup.folder)}
                 className="space-y-2"
               >
-                <CollapsibleTrigger className="flex items-center gap-2 w-full hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors group">
-                  {expandedFolders[folderGroup.folder] ? (
-                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                  )}
-                  <Folder className="w-4 h-4 text-amber-500" />
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1 text-left">
-                    {folderGroup.folder} ({folderGroup.documents.length})
-                  </h3>
-                </CollapsibleTrigger>
+                <div className="flex items-center gap-1 w-full group">
+                  <CollapsibleTrigger className="flex items-center gap-2 flex-1 hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors">
+                    {expandedFolders[folderGroup.folder] ? (
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    )}
+                    <Folder className="w-4 h-4 text-amber-500" />
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1 text-left">
+                      {folderGroup.folder} ({folderGroup.documents.length})
+                    </h3>
+                  </CollapsibleTrigger>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startRenaming(folderGroup.folder);
+                    }}
+                    title="Rename folder"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </Button>
+                </div>
                 <CollapsibleContent className="space-y-2 pl-2">
                   {folderGroup.documents.map((doc) => (
                     <Card key={doc.id} className="p-3 hover:shadow-soft transition-shadow">
@@ -294,6 +365,43 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
           )}
         </div>
       </ScrollArea>
+
+      {/* Rename Folder Dialog */}
+      <Dialog open={renamingFolder !== null} onOpenChange={(open) => !open && setRenamingFolder(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Folder</DialogTitle>
+            <DialogDescription>
+              Enter a new name for the folder "{renamingFolder}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="folder-name">Folder Name</Label>
+              <Input
+                id="folder-name"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleRenameFolder();
+                  }
+                }}
+                placeholder="Enter folder name"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenamingFolder(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameFolder} disabled={!newFolderName.trim()}>
+              Rename
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 };

@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Upload, Link as LinkIcon, Loader2 } from "lucide-react";
+import { ProcessingProgress } from "./ProcessingProgress";
 
 interface UploadDialogProps {
   open: boolean;
@@ -18,6 +19,7 @@ interface UploadDialogProps {
 export const UploadDialog = ({ open, onOpenChange, userId, onUploadComplete }: UploadDialogProps) => {
   const [isUploading, setIsUploading] = useState(false);
   const [url, setUrl] = useState("");
+  const [processingDocuments, setProcessingDocuments] = useState<Array<{ id: string; name: string }>>([]);
   const { toast } = useToast();
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -41,6 +43,9 @@ export const UploadDialog = ({ open, onOpenChange, userId, onUploadComplete }: U
         if (data.error) throw new Error(data.error);
 
         const documentId = data.documentId;
+
+        // Add to processing list immediately
+        setProcessingDocuments(prev => [...prev, { id: documentId, name: file.name }]);
 
         // Process file content asynchronously without blocking
         const fileReader = new FileReader();
@@ -68,8 +73,6 @@ export const UploadDialog = ({ open, onOpenChange, userId, onUploadComplete }: U
       });
 
       e.target.value = '';
-      onUploadComplete?.();
-      onOpenChange(false);
     } catch (error: any) {
       toast({
         title: "Upload failed",
@@ -119,6 +122,11 @@ export const UploadDialog = ({ open, onOpenChange, userId, onUploadComplete }: U
     }
   };
 
+  const handleProcessingComplete = (docId: string) => {
+    setProcessingDocuments(prev => prev.filter(doc => doc.id !== docId));
+    onUploadComplete?.();
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -128,6 +136,19 @@ export const UploadDialog = ({ open, onOpenChange, userId, onUploadComplete }: U
             Upload documents or add URLs to your knowledge base. OCR supported for scanned PDFs and images.
           </DialogDescription>
         </DialogHeader>
+
+        {processingDocuments.length > 0 && (
+          <div className="space-y-2 mb-4">
+            {processingDocuments.map(doc => (
+              <ProcessingProgress
+                key={doc.id}
+                documentId={doc.id}
+                fileName={doc.name}
+                onComplete={() => handleProcessingComplete(doc.id)}
+              />
+            ))}
+          </div>
+        )}
 
         <Tabs defaultValue="file" className="w-full">
           <TabsList className="grid w-full grid-cols-2">

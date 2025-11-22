@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
-import { FileText, Loader2, Trash2, AlertCircle, RefreshCw, Link as LinkIcon, Image, FileType, ChevronDown, ChevronRight, Folder, Edit2, Merge, FolderPlus } from "lucide-react";
+import { FileText, Loader2, Trash2, AlertCircle, RefreshCw, Link as LinkIcon, Image, FileType, ChevronDown, ChevronRight, Folder, Edit2, Merge, FolderPlus, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MergeFoldersDialog } from "./MergeFoldersDialog";
 import { CreateMasterFolderDialog } from "./CreateMasterFolderDialog";
+import { CreateFolderDialog } from "./CreateFolderDialog";
 
 interface Document {
   id: string;
@@ -46,8 +47,19 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
   const [isRenaming, setIsRenaming] = useState(false);
   const [showMergeDialog, setShowMergeDialog] = useState(false);
   const [showMasterDialog, setShowMasterDialog] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [draggedDoc, setDraggedDoc] = useState<Document | null>(null);
+  const [emptyFolders, setEmptyFolders] = useState<string[]>(() => {
+    // Load empty folders from localStorage on mount
+    const stored = localStorage.getItem(`emptyFolders_${userId}`);
+    return stored ? JSON.parse(stored) : [];
+  });
   const { toast } = useToast();
+
+  // Persist empty folders to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem(`emptyFolders_${userId}`, JSON.stringify(emptyFolders));
+  }, [emptyFolders, userId]);
 
   const getDocumentIcon = (doc: Document) => {
     if (doc.file_type === 'url' || doc.file_name.startsWith('http')) {
@@ -357,9 +369,32 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
     a.folder.localeCompare(b.folder)
   ) || [];
 
+  // Combine document folders with empty folders
   const allFolderNames = [
-    ...new Set(documents.map(d => d.folder || 'Uncategorized'))
+    ...new Set([
+      ...documents.map(d => d.folder || 'Uncategorized'),
+      ...emptyFolders
+    ])
   ].sort();
+
+  const handleCreateFolder = (folderName: string) => {
+    setEmptyFolders(prev => [...prev, folderName]);
+    setExpandedFolders(prev => ({ ...prev, [folderName]: true }));
+  };
+
+  const handleDeleteEmptyFolder = (folderName: string) => {
+    setEmptyFolders(prev => prev.filter(f => f !== folderName));
+    toast({
+      title: "Folder removed",
+      description: `"${folderName}" has been removed`,
+    });
+  };
+
+  // Remove empty folders that now have documents
+  useEffect(() => {
+    const foldersWithDocs = new Set(documents.map(d => d.folder || 'Uncategorized'));
+    setEmptyFolders(prev => prev.filter(f => !foldersWithDocs.has(f)));
+  }, [documents]);
 
   return (
     <aside className="h-full border-r bg-doc-sidebar flex flex-col">
@@ -368,26 +403,35 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
         <p className="text-sm text-muted-foreground mt-1">
           {documents.length} {documents.length === 1 ? 'document' : 'documents'} • {allFolderNames.length} {allFolderNames.length === 1 ? 'folder' : 'folders'}
         </p>
-        <div className="flex gap-2 mt-3">
+        <div className="grid grid-cols-2 gap-2 mt-3">
           <Button
             variant="outline"
             size="sm"
-            className="flex-1 text-xs"
-            onClick={() => setShowMergeDialog(true)}
-            disabled={allFolderNames.length < 2}
+            className="text-xs"
+            onClick={() => setShowCreateDialog(true)}
           >
-            <Merge className="w-3 h-3 mr-1" />
-            Merge
+            <Plus className="w-3 h-3 mr-1" />
+            New Folder
           </Button>
           <Button
             variant="outline"
             size="sm"
-            className="flex-1 text-xs"
+            className="text-xs"
             onClick={() => setShowMasterDialog(true)}
             disabled={allFolderNames.length === 0}
           >
             <FolderPlus className="w-3 h-3 mr-1" />
             Master
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="col-span-2 text-xs"
+            onClick={() => setShowMergeDialog(true)}
+            disabled={allFolderNames.length < 2}
+          >
+            <Merge className="w-3 h-3 mr-1" />
+            Merge Folders
           </Button>
         </div>
       </div>
@@ -634,6 +678,65 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
                   </CollapsibleContent>
                 </Collapsible>
               ))}
+
+              {/* Empty Folders */}
+              {emptyFolders.map((folderName) => (
+                <Collapsible
+                  key={`empty-${folderName}`}
+                  open={expandedFolders[folderName] ?? true}
+                  onOpenChange={() => toggleFolder(folderName)}
+                  className="space-y-2"
+                >
+                  <div 
+                    className="flex items-center gap-1 w-full group"
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, folderName)}
+                  >
+                    <CollapsibleTrigger className="flex items-center gap-2 flex-1 hover:bg-muted/50 rounded-md px-2 py-1.5 transition-colors">
+                      {expandedFolders[folderName] ? (
+                        <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      )}
+                      <Folder className="w-4 h-4 text-amber-500" />
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1 text-left">
+                        {folderName} (0)
+                      </h3>
+                    </CollapsibleTrigger>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startRenaming(folderName);
+                      }}
+                      title="Rename folder"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteEmptyFolder(folderName);
+                      }}
+                      title="Delete empty folder"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                  <CollapsibleContent className="space-y-2 pl-2">
+                    <div className="text-center py-6 text-muted-foreground">
+                      <Folder className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-xs">Empty folder</p>
+                      <p className="text-xs mt-1">Drag documents here or upload with this folder selected</p>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              ))}
             </>
           )}
         </div>
@@ -696,6 +799,14 @@ export const DocumentSidebar = ({ userId }: { userId: string }) => {
         folders={allFolderNames}
         userId={userId}
         onCreateComplete={fetchDocuments}
+      />
+
+      {/* Create Folder Dialog */}
+      <CreateFolderDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        existingFolders={allFolderNames}
+        onFolderCreate={handleCreateFolder}
       />
     </aside>
   );

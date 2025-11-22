@@ -91,15 +91,26 @@ serve(async (req) => {
             try {
               text = await ocrImage(buffer);
               
-              // If no text found, create a minimal entry rather than failing
-              if (text.trim().length === 0) {
-                text = `[Image: ${fileName}]\n\nThis image was uploaded but no text content could be extracted via OCR. The image may be purely graphical or the text may not be machine-readable.`;
-                console.log('No text extracted from image, using placeholder');
+              // If no text found, use AI vision to analyze the image
+              if (text.trim().length < 50) {
+                console.log('Limited OCR text, using AI vision analysis...');
+                const visionText = await analyzeImageWithVision(buffer, fileName);
+                if (visionText) {
+                  text = visionText;
+                } else {
+                  text = `[Image: ${fileName}]\n\nThis image was uploaded but no text content could be extracted.`;
+                }
               }
             } catch (ocrError) {
-              console.error('OCR processing failed:', ocrError);
-              // Create a document entry even if OCR fails
-              text = `[Image: ${fileName}]\n\nThis image was uploaded but OCR processing encountered an error. The image has been stored for reference.`;
+              console.error('OCR processing failed, trying vision analysis:', ocrError);
+              // Try AI vision as fallback
+              try {
+                const visionText = await analyzeImageWithVision(buffer, fileName);
+                text = visionText || `[Image: ${fileName}]\n\nThis image was uploaded but could not be processed.`;
+              } catch (visionError) {
+                console.error('Vision analysis also failed:', visionError);
+                text = `[Image: ${fileName}]\n\nThis image was uploaded but processing encountered errors.`;
+              }
             }
           } else {
             // For other text files, decode as text
@@ -411,6 +422,67 @@ async function extractTextFromPDF(buffer: Uint8Array): Promise<string> {
   } catch (error) {
     console.error('Error parsing PDF:', error);
     throw new Error('Failed to extract text from PDF. The file may be corrupted or use an unsupported format.');
+  }
+}
+
+async function analyzeImageWithVision(buffer: Uint8Array, fileName: string): Promise<string> {
+  try {
+    console.log('Analyzing image with AI vision...');
+    
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')!;
+    
+    // Convert buffer to base64
+    const base64 = btoa(
+      buffer.reduce((data, byte) => data + String.fromCharCode(byte), '')
+    );
+    const mimeType = detectImageMimeType(buffer);
+    const dataUrl = `data:${mimeType};base64,${base64}`;
+    
+    // Use Lovable AI vision model to analyze the image
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${lovableApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Analyze this image in detail. Describe what you see, including any text, diagrams, charts, UI elements, or other content. Be comprehensive and specific so someone can understand what this image contains without seeing it.'
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: dataUrl
+                }
+              }
+            ]
+          }
+        ]
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Vision API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const analysis = data.choices?.[0]?.message?.content;
+    
+    if (analysis) {
+      console.log(`Vision analysis completed: ${analysis.length} characters`);
+      return `[Image: ${fileName}]\n\nImage Analysis:\n${analysis}`;
+    }
+    
+    return '';
+  } catch (error) {
+    console.error('Error analyzing image with vision:', error);
+    return '';
   }
 }
 

@@ -51,10 +51,19 @@ serve(async (req) => {
       const processInBackground = async () => {
         try {
           const buffer = Uint8Array.from(atob(content), c => c.charCodeAt(0));
-          let text = new TextDecoder().decode(buffer);
+          let text = '';
+          
+          // Enhanced PDF parsing
+          if (fileType === 'application/pdf') {
+            console.log('Processing PDF with proper parsing...');
+            text = await extractTextFromPDF(buffer);
+          } else {
+            // For non-PDF files, decode as text
+            text = new TextDecoder().decode(buffer);
+          }
 
-          // Simple text extraction (for MVP - can be enhanced with proper parsers)
-          text = text.substring(0, 100000); // Limit to 100k chars for MVP
+          // Limit text length
+          text = text.substring(0, 100000);
 
           // Chunk the text
           const chunks = chunkText(text, 350, 80);
@@ -142,6 +151,94 @@ serve(async (req) => {
     );
   }
 });
+
+async function extractTextFromPDF(buffer: Uint8Array): Promise<string> {
+  try {
+    // Use pdf-parse library via esm.sh
+    const pdfParse = await import('https://esm.sh/pdf-parse@1.1.1');
+    const data = await pdfParse.default(buffer);
+    
+    let fullText = data.text;
+    console.log(`Extracted ${fullText.length} characters from ${data.numpages} pages`);
+    
+    // Try to detect and format tables
+    const lines = fullText.split('\n');
+    let formattedText = '';
+    let inTable = false;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Simple table detection: lines with multiple spaces or tabs between words
+      const hasMultipleSpaces = /\s{3,}/.test(line) || /\t/.test(line);
+      const hasNumbers = /\d/.test(line);
+      
+      if (hasMultipleSpaces && hasNumbers && line.trim().length > 10) {
+        if (!inTable) {
+          formattedText += '\n[TABLE]\n';
+          inTable = true;
+        }
+        // Format as table row
+        const cells = line.split(/\s{2,}|\t/).filter(cell => cell.trim());
+        formattedText += cells.join(' | ') + '\n';
+      } else {
+        if (inTable) {
+          formattedText += '[/TABLE]\n\n';
+          inTable = false;
+        }
+        formattedText += line + '\n';
+      }
+    }
+    
+    return formattedText;
+  } catch (error) {
+    console.error('Error parsing PDF:', error);
+    // Fallback to basic text decoding
+    return new TextDecoder().decode(buffer);
+  }
+}
+
+function detectTable(items: any[]): boolean {
+  // Simple table detection: check if items are arranged in grid-like pattern
+  if (items.length < 10) return false;
+  
+  const yPositions = items
+    .filter((item: any) => 'transform' in item)
+    .map((item: any) => Math.round(item.transform[5]));
+  
+  const uniqueYPositions = [...new Set(yPositions)];
+  
+  // If we have multiple rows with similar Y positions, likely a table
+  return uniqueYPositions.length > 2 && uniqueYPositions.length < items.length / 2;
+}
+
+function formatTable(items: any[]): string {
+  // Group items by Y position (rows)
+  const rows: Map<number, any[]> = new Map();
+  
+  items.forEach((item: any) => {
+    if ('transform' in item && 'str' in item && item.str.trim()) {
+      const y = Math.round(item.transform[5]);
+      if (!rows.has(y)) {
+        rows.set(y, []);
+      }
+      rows.get(y)!.push(item);
+    }
+  });
+  
+  // Sort rows by Y position and format as table
+  let tableText = '';
+  const sortedRows = Array.from(rows.entries()).sort((a, b) => b[0] - a[0]);
+  
+  sortedRows.forEach(([_, rowItems]) => {
+    // Sort items in row by X position
+    rowItems.sort((a, b) => a.transform[4] - b.transform[4]);
+    const rowText = rowItems.map(item => item.str).join(' | ');
+    tableText += rowText + '\n';
+  });
+  
+  return tableText;
+}
 
 function chunkText(text: string, chunkSize: number, overlap: number): string[] {
   const chunks: string[] = [];

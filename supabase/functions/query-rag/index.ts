@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { RAGConfig } from "../_shared/rag-config.ts";
 
 interface Source {
   document_name: string;
@@ -46,7 +47,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'text-embedding-3-small',
+        model: RAGConfig.embedding.model,
         input: query,
       }),
     });
@@ -62,8 +63,8 @@ serve(async (req) => {
     console.log(`Searching for chunks with query: "${query}"`);
     const { data: chunks, error: searchError } = await supabase.rpc('search_chunks', {
       query_embedding: queryEmbedding,
-      match_threshold: 0.25,  // Lower threshold for better recall
-      match_count: 15,         // Retrieve more candidates
+      match_threshold: RAGConfig.retrieval.initialMatchThreshold,
+      match_count: RAGConfig.retrieval.initialMatchCount,
       filter_user_id: userId,
     });
 
@@ -75,7 +76,7 @@ serve(async (req) => {
     console.log(`Found ${chunks?.length || 0} chunks`);
 
     if (!chunks || chunks.length === 0) {
-      const response = "I don't have any information to answer that question. Could you upload more relevant documents or rephrase your question?";
+      const response = RAGConfig.prompts.noResultsResponse;
       
       await supabase
         .from('messages')
@@ -95,9 +96,9 @@ serve(async (req) => {
 
     // Step 3: Rerank and select top chunks with moderate filtering
     const rerankedChunks = chunks
-      .filter((chunk: any) => chunk.similarity >= 0.28)  // Lower filter for more context
+      .filter((chunk: any) => chunk.similarity >= RAGConfig.retrieval.rerankThreshold)
       .sort((a: any, b: any) => b.similarity - a.similarity)
-      .slice(0, 8);  // Include more chunks for richer context
+      .slice(0, RAGConfig.retrieval.topChunksToUse);
 
     console.log(`Using ${rerankedChunks.length} chunks after reranking (similarities: ${rerankedChunks.map((c: any) => c.similarity.toFixed(3)).join(', ')})`);
 
@@ -134,25 +135,11 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: RAGConfig.ai.queryModel,
         messages: [
           {
             role: 'system',
-            content: `You are Cerebro, an intelligent knowledge assistant that helps users find information in their documents.
-
-RESPONSE GUIDELINES:
-1. Answer directly and comprehensively using information from the provided context
-2. Structure your response with clear paragraphs and bullet points when appropriate
-3. Cite specific documents/folders when referencing information (e.g., "According to Strategy.pdf...")
-4. If the context partially answers the question, provide what you can and note what's missing
-5. Only say you don't have information if the context is completely irrelevant
-6. Use a professional but conversational tone
-7. For complex queries, break down the answer into logical sections
-
-IMPORTANT:
-- Be thorough - use all relevant information from the context
-- Make connections between different pieces of information when relevant
-- If asked about multiple topics, address each one systematically`
+            content: RAGConfig.prompts.querySystem
           },
           {
             role: 'user',

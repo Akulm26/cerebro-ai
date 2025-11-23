@@ -1,7 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-// Tesseract removed - doesn't work in Deno (Worker not defined)
+import { RAGConfig } from "../_shared/rag-config.ts";
 
 declare const EdgeRuntime: any;
 
@@ -70,7 +70,7 @@ serve(async (req) => {
           await supabase
             .from('documents')
             .update({ 
-              processing_progress: 10, 
+              processing_progress: RAGConfig.progressStages.extracting, 
               processing_stage: 'extracting' 
             })
             .eq('id', documentId);
@@ -126,13 +126,13 @@ serve(async (req) => {
           await supabase
             .from('documents')
             .update({ 
-              processing_progress: 33, 
+              processing_progress: RAGConfig.progressStages.chunking, 
               processing_stage: 'chunking' 
             })
             .eq('id', documentId);
 
           // Limit text length
-          text = text.substring(0, 100000);
+          text = text.substring(0, RAGConfig.processing.maxTextLength);
 
           // Get existing folders for better classification
           const { data: existingDocs } = await supabase
@@ -171,27 +171,30 @@ serve(async (req) => {
             console.error(`[${actualFileName}] Classification error:`, classifyError);
           }
 
-          // Chunk the text with smaller size to avoid token limit (8192 tokens = ~6000 words)
-          // Using 150 words per chunk (≈200 tokens) to stay well below limits
-          const chunks = chunkText(text, 150, 30);
+          // Chunk the text
+          const chunks = chunkText(
+            text, 
+            RAGConfig.processing.chunkSize, 
+            RAGConfig.processing.chunkOverlap
+          );
 
           // Update progress - chunking complete, starting embeddings
           await supabase
             .from('documents')
             .update({ 
-              processing_progress: 50, 
+              processing_progress: RAGConfig.progressStages.embeddingStart, 
               processing_stage: 'embedding' 
             })
             .eq('id', documentId);
 
-          // Batch embeddings for better performance (smaller batches to avoid token limits)
-          // Reduced to 3 chunks per batch to stay well under 8192 token limit
-          const batchSize = 3;
+          // Batch embeddings for better performance
+          const batchSize = RAGConfig.embedding.batchSize;
           for (let i = 0; i < chunks.length; i += batchSize) {
             const batch = chunks.slice(i, i + batchSize);
             
             // Update progress during embedding generation
-            const embeddingProgress = 50 + Math.floor((i / chunks.length) * 45);
+            const embeddingProgress = RAGConfig.progressStages.embeddingStart + 
+              Math.floor((i / chunks.length) * (RAGConfig.progressStages.embeddingEnd - RAGConfig.progressStages.embeddingStart));
             await supabase
               .from('documents')
               .update({ 
@@ -207,7 +210,7 @@ serve(async (req) => {
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                model: 'text-embedding-3-small',
+                model: RAGConfig.embedding.model,
                 input: batch,
                 encoding_format: 'float',
               }),
@@ -257,7 +260,7 @@ serve(async (req) => {
               text_length: text.length,
               folder: folder,
               error_message: null,
-              processing_progress: 100,
+              processing_progress: RAGConfig.progressStages.complete,
               processing_stage: 'complete',
             })
             .eq('id', documentId);
@@ -398,14 +401,14 @@ async function analyzeImageWithVision(buffer: Uint8Array, fileName: string): Pro
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: RAGConfig.ai.visionModel,
         messages: [
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text: 'Analyze this image in detail. Describe what you see, including any text, diagrams, charts, UI elements, or other content. Be comprehensive and specific so someone can understand what this image contains without seeing it.'
+                text: RAGConfig.prompts.visionAnalysis
               },
               {
                 type: 'image_url',

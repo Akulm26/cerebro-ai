@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -14,20 +14,9 @@ const queryClient = new QueryClient();
 
 const App = () => {
   const [showSplash, setShowSplash] = useState(true);
-  const [hasSeenSplash, setHasSeenSplash] = useState(false);
-
-  useEffect(() => {
-    const seen = sessionStorage.getItem("cerebro-splash-seen");
-    if (seen) {
-      setShowSplash(false);
-      setHasSeenSplash(true);
-    }
-  }, []);
 
   const handleSplashComplete = () => {
-    sessionStorage.setItem("cerebro-splash-seen", "true");
     setShowSplash(false);
-    setHasSeenSplash(true);
   };
 
   return (
@@ -36,7 +25,7 @@ const App = () => {
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          {showSplash && !hasSeenSplash && (
+          {showSplash && (
             <SplashScreen onComplete={handleSplashComplete} />
           )}
           <BrowserRouter>

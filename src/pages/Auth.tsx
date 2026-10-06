@@ -21,7 +21,9 @@ const Auth = () => {
   useEffect(() => {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session && !window.location.hash.includes("type=recovery")) {
+      const recoveryLink = window.location.hash.includes("type=recovery");
+      if (recoveryLink) setIsRecovery(true);
+      if (session && !recoveryLink) {
         navigate("/");
       }
     };
@@ -33,6 +35,7 @@ const Auth = () => {
         setIsRecovery(true);
         return;
       }
+      if (window.location.hash.includes("type=recovery")) return;
       if (session) {
         navigate("/");
       }
@@ -53,7 +56,7 @@ const Auth = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!validateEmail(email)) {
+    if (!isRecovery && !validateEmail(email)) {
       toast({
         title: "Invalid email",
         description: "Please enter a valid email address",

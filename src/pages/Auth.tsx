@@ -11,6 +11,7 @@ import { Brain, Loader2 } from "lucide-react";
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isRecovery, setIsRecovery] = useState(() => window.location.hash.includes("type=recovery"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -20,7 +21,9 @@ const Auth = () => {
   useEffect(() => {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
+      const recoveryLink = window.location.hash.includes("type=recovery");
+      if (recoveryLink) setIsRecovery(true);
+      if (session && !recoveryLink) {
         navigate("/");
       }
     };
@@ -28,6 +31,11 @@ const Auth = () => {
     checkUser();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setIsRecovery(true);
+        return;
+      }
+      if (window.location.hash.includes("type=recovery")) return;
       if (session) {
         navigate("/");
       }
@@ -48,7 +56,7 @@ const Auth = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!validateEmail(email)) {
+    if (!isRecovery && !validateEmail(email)) {
       toast({
         title: "Invalid email",
         description: "Please enter a valid email address",
@@ -69,7 +77,12 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      if (isSignUp) {
+      if (isRecovery) {
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) throw error;
+        toast({ title: "Password updated", description: "You can now continue to Cerebro." });
+        navigate("/");
+      } else if (isSignUp) {
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -117,10 +130,41 @@ const Auth = () => {
           }
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Something went wrong",
+        description: error instanceof Error ? error.message : "Something went wrong",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    if (!validateEmail(email)) {
+      toast({
+        title: "Enter your email first",
+        description: "Type the email address for your Cerebro account, then request a reset link.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth`,
+      });
+      if (error) throw error;
+      toast({
+        title: "Check your email",
+        description: "If an account uses that address, you’ll receive a link to reset its password.",
+      });
+    } catch (error: unknown) {
+      toast({
+        title: "Could not send reset link",
+        description: error instanceof Error ? error.message : "Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -138,17 +182,19 @@ const Auth = () => {
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">
-            {isSignUp ? "Create an account" : "Welcome to Cerebro"}
+            {isRecovery ? "Choose a new password" : isSignUp ? "Create an account" : "Welcome to Cerebro"}
           </CardTitle>
           <CardDescription>
-            {isSignUp 
+            {isRecovery
+              ? "Enter a new password for your account"
+              : isSignUp 
               ? "Enter your details to get started" 
               : "Sign in to access your knowledge base"}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {isSignUp && (
+            {isSignUp && !isRecovery && (
               <div className="space-y-2">
                 <Label htmlFor="fullName">Full Name</Label>
                 <Input
@@ -160,7 +206,7 @@ const Auth = () => {
                 />
               </div>
             )}
-            <div className="space-y-2">
+            {!isRecovery && <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
@@ -171,9 +217,9 @@ const Auth = () => {
                 disabled={isLoading}
                 required
               />
-            </div>
+            </div>}
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{isRecovery ? "New password" : "Password"}</Label>
               <Input
                 id="password"
                 type="password"
@@ -195,11 +241,18 @@ const Auth = () => {
                   Please wait
                 </>
               ) : (
-                <>{isSignUp ? "Sign Up" : "Sign In"}</>
+                <>{isRecovery ? "Update password" : isSignUp ? "Sign Up" : "Sign In"}</>
               )}
             </Button>
           </form>
-          <div className="mt-4 text-center text-sm">
+          {!isSignUp && !isRecovery && (
+            <div className="mt-3 text-center">
+              <Button type="button" variant="link" className="h-auto p-0 text-sm" onClick={handlePasswordReset} disabled={isLoading}>
+                Forgot password?
+              </Button>
+            </div>
+          )}
+          {!isRecovery && <div className="mt-4 text-center text-sm">
             <button
               onClick={() => setIsSignUp(!isSignUp)}
               className="text-primary hover:underline"
@@ -209,7 +262,7 @@ const Auth = () => {
                 ? "Already have an account? Sign in" 
                 : "Don't have an account? Sign up"}
             </button>
-          </div>
+          </div>}
         </CardContent>
       </Card>
     </div>

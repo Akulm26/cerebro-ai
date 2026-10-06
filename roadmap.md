@@ -1,0 +1,3 @@
+- [x] Add a separate, read-only sample workspace for temporary demo access.
+- [x] Link the sign-in screen to the demo and route the demo independently of authenticated chat.
+- [x] Verify the demo and sign-in navigation in the running app.

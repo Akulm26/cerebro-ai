@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import Auth from "./pages/Auth";
 import Chat from "./pages/Chat";
+import Demo from "./pages/Demo";
 import NotFound from "./pages/NotFound";
 import SplashScreen from "./components/SplashScreen";
 
@@ -32,6 +33,7 @@ const App = () => {
             <Routes>
               <Route path="/" element={<Chat />} />
               <Route path="/auth" element={<Auth />} />
+              <Route path="/demo" element={<Demo />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Brain, Loader2 } from "lucide-react";
+import { ArrowRight, Brain, Loader2 } from "lucide-react";
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -263,6 +263,14 @@ const Auth = () => {
                 : "Don't have an account? Sign up"}
             </button>
           </div>}
+          {!isRecovery && (
+            <div className="mt-5 border-t pt-4 text-center">
+              <p className="mb-3 text-sm text-muted-foreground">Just looking around?</p>
+              <Button asChild type="button" variant="outline" className="w-full" disabled={isLoading}>
+                <Link to="/demo">Explore the read-only demo <ArrowRight className="h-4 w-4" /></Link>
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
